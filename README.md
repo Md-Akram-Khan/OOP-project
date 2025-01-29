@@ -34,7 +34,7 @@ Open MySQL and execute the following commands one by one to create the required 
 
 //-------------start--------------//
 
-  +  CREATE DATABASE ebs;
+  ->  CREATE DATABASE ebs;
   
   ->  USE ebs;
 
