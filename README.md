@@ -3,22 +3,33 @@ Electricity Billing System
 Project Setup Instructions:
 
 1. Download Required Files:
+
    ->  Download the project folder: "Electricity-Billing-System"
+   
    ->  Download the required JAR files:
+   
         + mysql-connector-java-8.0.28.jar
+   
         + rs2xml.jar
 
-2. Add JAR Files to the Project:
+3. Add JAR Files to the Project:
+   
   ->  Open the project in an IDE such as NetBeans, VS Code, or Eclipse.
+  
   ->  Locate the "Libraries" section in the project.
+  
   ->  Add the two JAR files (mysql-connector-java-8.0.28.jar and rs2xml.jar) to the Libraries folder.
    
-4. Prerequisites:
+5. Prerequisites:
+   
 Ensure that your system has the following installed:
+
   ->  JDK (Java Development Kit)
+  
   ->  MySQL Server
    
-6. Set Up the MySQL Database
+8. Set Up the MySQL Database
+9. 
 Open MySQL and execute the following commands one by one to create the required database and tables:
 
 //-------------start--------------//
@@ -74,9 +85,15 @@ Open MySQL and execute the following commands one by one to create the required 
 
 
 5. Configure Database Connection:
+   
     ->Locate the conn.java file in the src folder.
+   
     ->Open the file and update the MySQL username and password according to your MySQL credentials.
-6. Run the Project:
+   
+7. Run the Project:
+   
     ->  Open the project in your preferred IDE.
+   
     ->  Run the Main.java file.
+   
     ->  Use the shortcut Shift + F6 to execute the program.
