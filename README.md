@@ -29,12 +29,12 @@ Ensure that your system has the following installed:
   ->  MySQL Server
    
 8. Set Up the MySQL Database
-9. 
+   
 Open MySQL and execute the following commands one by one to create the required database and tables:
 
 //-------------start--------------//
 
-  ->  CREATE DATABASE ebs;
+  +  CREATE DATABASE ebs;
   
   ->  USE ebs;
 
