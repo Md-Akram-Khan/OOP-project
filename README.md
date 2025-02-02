@@ -33,7 +33,7 @@ Ensure that your system has the following installed:
 Open MySQL and execute the following commands one by one to create the required database and tables:
 
 //-------------start--------------//
-
+```
   ->  CREATE DATABASE ebs;
   
   ->  USE ebs;
@@ -80,7 +80,7 @@ Open MySQL and execute the following commands one by one to create the required 
           totalbill VARCHAR(20),
           status VARCHAR(20)
       );
-      
+```    
 //-------------Finish--------------//
 
 
