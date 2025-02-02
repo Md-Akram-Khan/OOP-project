@@ -14,7 +14,7 @@ Project Setup Instructions:
 
 3. Add JAR Files to the Project:
    
-  ->  Open the project in an IDE such as NetBeans, VS Code, or Eclipse.
+  ->  Open the project in NetBeans.
   
   ->  Locate the "Libraries" section in the project.
   
@@ -92,7 +92,7 @@ Open MySQL and execute the following commands one by one to create the required 
    
 7. Run the Project:
    
-    ->  Open the project in your preferred IDE.
+    ->  Open the project.
    
     ->  Run the Main.java file.
    
