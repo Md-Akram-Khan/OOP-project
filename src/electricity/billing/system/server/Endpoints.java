@@ -97,6 +97,11 @@ final class Endpoints {
             Api.NewBillRequest b = r.body(Api.NewBillRequest.class);
             return billing.createBill(text(b.meterNo()), month(b.month()), Request.checkYear(b.year()), b.units());
         });
+        router.add("POST", "/api/bills/preview", r -> {
+            r.requireAdmin();
+            Api.PreviewRequest b = r.body(Api.PreviewRequest.class);
+            return billing.preview(text(b.meterNo()), b.units());
+        });
         router.add("GET", "/api/bills", r -> {
             UserAccount user = r.requireUser();
             String meter = user.isAdmin() ? r.query("meter") : user.meterNo();

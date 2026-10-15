@@ -2,6 +2,7 @@ package electricity.billing.system.service;
 
 import electricity.billing.system.common.AppException;
 import electricity.billing.system.billing.Tariff;
+import electricity.billing.system.common.Api;
 import electricity.billing.system.db.BillDao;
 import electricity.billing.system.db.CustomerDao;
 import electricity.billing.system.db.Database;
@@ -16,6 +17,7 @@ import electricity.billing.system.model.Meter;
 import electricity.billing.system.model.Months;
 import electricity.billing.system.model.TaxRates;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
@@ -48,6 +50,23 @@ public class BillingService {
                 throw e;
             }
             return bill;
+        });
+    }
+
+    /** Prices units with the meter's tariff without saving anything, for the live preview. */
+    public Api.BillPreview preview(String meterNo, int units) throws SQLException {
+        if (units < 0) {
+            throw new AppException("Units consumed cannot be negative.");
+        }
+        return Database.withConnection(c -> {
+            if (!new CustomerDao(c).exists(meterNo)) {
+                throw new AppException("No customer has meter number " + meterNo + ".");
+            }
+            TaxRates rates = new TaxDao(c).load();
+            BillType type = new MeterDao(c).find(meterNo).map(Meter::billType).orElse(BillType.NORMAL);
+            Tariff tariff = Tariff.forBillType(type);
+            return new Api.BillPreview(type, units,
+                    tariff.energyCharge(units, rates).setScale(2, RoundingMode.HALF_UP), rates, tariff.total(units, rates));
         });
     }
 

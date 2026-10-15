@@ -23,6 +23,11 @@ public class BillingClient {
         return api.post("/api/bills", new Api.NewBillRequest(meterNo, month, year, units), Bill.class);
     }
 
+    /** Admin: what a bill would cost, without saving it. */
+    public Api.BillPreview preview(String meterNo, int units) {
+        return api.post("/api/bills/preview", new Api.PreviewRequest(meterNo, units), Api.BillPreview.class);
+    }
+
     /** Admin: any filter left null matches everything. */
     public List<Bill> search(String meterNo, String month, Integer year) {
         return api.get(ApiClient.withQuery("/api/bills",

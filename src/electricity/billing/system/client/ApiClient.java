@@ -74,6 +74,20 @@ public final class ApiClient {
         account = null;
     }
 
+    /** True if the server answers its health check. */
+    public boolean isServerUp() {
+        try {
+            send("GET", "/api/health", null, null);
+            return true;
+        } catch (AppException e) {
+            return false;
+        }
+    }
+
+    public String baseUrl() {
+        return baseUrl;
+    }
+
     <T> T get(String path, Type responseType) {
         return send("GET", path, null, responseType);
     }

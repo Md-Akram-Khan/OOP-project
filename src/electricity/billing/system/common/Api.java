@@ -1,7 +1,10 @@
 package electricity.billing.system.common;
 
+import electricity.billing.system.model.BillType;
 import electricity.billing.system.model.Role;
+import electricity.billing.system.model.TaxRates;
 import electricity.billing.system.model.UserAccount;
+import java.math.BigDecimal;
 
 /** Request and response bodies exchanged between the app and the server, as JSON. */
 public final class Api {
@@ -30,6 +33,13 @@ public final class Api {
 
     /** Identifies one bill. {@code meterNo} is ignored when a customer sends it: they can only touch their own. */
     public record BillKey(String meterNo, String month, int year) {
+    }
+
+    public record PreviewRequest(String meterNo, int units) {
+    }
+
+    /** What a bill would cost, without saving it. */
+    public record BillPreview(BillType billType, int units, BigDecimal energyCharge, TaxRates rates, BigDecimal total) {
     }
 
     public record AdminExists(boolean exists) {
