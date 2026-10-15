@@ -4,7 +4,7 @@ Status of every issue found in the project review, plus a few more found while f
 
 **Key:** ✅ Solved · ⚠️ Solved in code, needs an action from you · ❌ Not solved (reason given)
 
-**Summary:** 31 solved · 2 need your action · 3 not solved (36 issues)
+**Summary:** 33 solved · 1 needs your action · 2 not solved (36 issues)
 
 ---
 
@@ -16,10 +16,10 @@ Status of every issue found in the project review, plus a few more found while f
 | 2 | **Account takeover**: knowing a meter number was enough to reset that customer's username and password | ✅ | Customers must give their meter number **and** the email on file. The SQL only updates a login that hasn't been claimed (`coalesce(username,'') = ''`), so an existing account can't be overwritten. |
 | 3 | Signup said "Account Created Successfully" even when nothing was saved | ✅ | Checks the number of rows updated and shows a clear error. |
 | 4 | **SQL injection** in about 12 places (string-built queries) | ✅ | All SQL now lives in the `db/` DAOs and uses `PreparedStatement`. Names like `O'Brien` work. |
-| 5 | **Plain-text passwords** | ⚠️ | Salted PBKDF2 hashing (`security/PasswordHasher`). Your 2 existing accounts are still plain text until each one logs in once; the app re-hashes them automatically then. |
+| 5 | **Plain-text passwords** | ✅ | Salted PBKDF2 hashing (`security/PasswordHasher`). Both existing accounts were re-hashed automatically on their first login; no plain-text passwords remain. |
 | 6 | MySQL root password written in `JarApplication/README.txt` | ⚠️ | Removed from the README, and the old zips containing it were purged from the GitHub history. **Change that password** if you use it anywhere else. |
 | 7 | *(Found during fixes)* Customer signup auto-filled the customer's name when you typed any meter number, so anyone could look up names | ✅ | Removed. Customers no longer see a name until they've proved who they are. |
-| 8 | *(Found during fixes)* **Every copy of the app contains the database password**, so a customer could connect to Supabase directly and bypass all the rules above | ❌ | Architectural. Fixing it needs a backend API (or Supabase Auth with row-level security) between the app and the database. That's a project-sized change, beyond a bug fix. |
+| 8 | *(Found during fixes)* **Every copy of the app contained the database password**, so a customer could connect to Supabase directly and bypass all the rules above | ✅ | A backend API server (`server/` package) now sits between the app and the database and is the only holder of the database password. The app contains no database code or driver. The server checks every request against the caller's session token: admin-only actions need an admin token, and customers can only reach their own meter's data. Logins lock for 15 minutes after 5 failures. Row-level security blocks Supabase's public Data API. Tested end to end (36 / 36 checks). **For use beyond one computer, the server must sit behind HTTPS**; see the README. |
 
 ## Bugs
 
@@ -81,6 +81,7 @@ Status of every issue found in the project review, plus a few more found while f
 | Logic tests: tariffs, password hashing, validation, months | ✅ 16 / 16 |
 | Database dry run: migration + every DAO, rolled back | ✅ 17 / 17 |
 | Rebuilt JAR, read-only run against the live migrated database | ✅ Admin, customers, meters, tax rates and bills all load |
+| API server end to end (real server + real client, throwaway database schema) | ✅ 36 / 36 |
 | Clicking through every window by hand | ❌ Not done: I can't operate the GUI. Please test login, signup, add customer, calculate, pay and confirm. |
 
 ## Project layout

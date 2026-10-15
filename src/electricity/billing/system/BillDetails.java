@@ -1,6 +1,6 @@
 package electricity.billing.system;
 
-import electricity.billing.system.service.BillingService;
+import electricity.billing.system.client.BillingClient;
 import java.awt.BorderLayout;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -8,7 +8,7 @@ import javax.swing.JTable;
 /** Customer's bill history, newest first. */
 public class BillDetails extends BaseFrame {
 
-    private final BillingService billing = new BillingService();
+    private final BillingClient billing = new BillingClient();
 
     BillDetails(String meter) {
         super("Bill Details");
@@ -19,6 +19,6 @@ public class BillDetails extends BaseFrame {
 
         setVisible(true);
 
-        runAsync(() -> billing.billsFor(meter), bills -> table.setModel(Tables.bills(bills)));
+        runAsync(() -> billing.myBills(), bills -> table.setModel(Tables.bills(bills)));
     }
 }

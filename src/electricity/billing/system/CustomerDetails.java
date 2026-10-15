@@ -1,6 +1,6 @@
 package electricity.billing.system;
 
-import electricity.billing.system.service.CustomerService;
+import electricity.billing.system.client.CustomerClient;
 import java.awt.BorderLayout;
 import java.awt.print.PrinterException;
 import javax.swing.JButton;
@@ -10,7 +10,7 @@ import javax.swing.JTable;
 /** Admin's list of every customer. */
 public class CustomerDetails extends BaseFrame {
 
-    private final CustomerService customers = new CustomerService();
+    private final CustomerClient customers = new CustomerClient();
 
     CustomerDetails() {
         super("Customer Details");

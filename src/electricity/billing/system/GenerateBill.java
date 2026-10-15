@@ -6,7 +6,7 @@ import electricity.billing.system.model.BillType;
 import electricity.billing.system.model.Customer;
 import electricity.billing.system.model.Meter;
 import electricity.billing.system.model.TaxRates;
-import electricity.billing.system.service.BillingService;
+import electricity.billing.system.client.BillingClient;
 import java.awt.BorderLayout;
 import java.awt.Choice;
 import java.awt.Font;
@@ -27,7 +27,7 @@ public class GenerateBill extends BaseFrame implements ActionListener {
     private final Choice month, year;
     private final JTextArea area;
     private final JButton generate;
-    private final BillingService billing = new BillingService();
+    private final BillingClient billing = new BillingClient();
 
     GenerateBill(String meter) {
         super("Generate Bill");
@@ -60,7 +60,7 @@ public class GenerateBill extends BaseFrame implements ActionListener {
     public void actionPerformed(ActionEvent ae) {
         String billMonth = month.getSelectedItem();
         int billYear = Integer.parseInt(year.getSelectedItem());
-        runAsync(() -> billing.statement(meter, billMonth, billYear),
+        runAsync(() -> billing.myStatement(billMonth, billYear),
                 statement -> {
                     area.setText(format(statement, billMonth, billYear));
                     area.setCaretPosition(0);

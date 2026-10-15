@@ -59,3 +59,12 @@ create table if not exists bill (
               check (status in ('Not Paid', 'Pending Verification', 'Paid')),
     primary key (meter_no, year, month)
 );
+
+-- Only the backend server may touch these tables. Turning on row-level
+-- security with no policies blocks Supabase's public Data API (the anon and
+-- authenticated roles); the server's postgres role bypasses RLS.
+alter table customer   enable row level security;
+alter table login      enable row level security;
+alter table meter_info enable row level security;
+alter table tax        enable row level security;
+alter table bill       enable row level security;

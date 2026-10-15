@@ -2,7 +2,7 @@ package electricity.billing.system;
 
 import electricity.billing.system.model.Role;
 import electricity.billing.system.model.UserAccount;
-import electricity.billing.system.service.AuthService;
+import electricity.billing.system.client.AuthClient;
 import java.awt.Choice;
 import java.awt.Color;
 import java.awt.Font;
@@ -31,7 +31,7 @@ import javax.swing.border.TitledBorder;
 public class Signup extends BaseFrame implements ActionListener {
 
     private final UserAccount createdBy;
-    private final AuthService auth = new AuthService();
+    private final AuthClient auth = new AuthClient();
     private final JPanel panel;
     private final Choice accountType;
     private final JLabel lblmeter, lblemail, lblname;
@@ -160,7 +160,7 @@ public class Signup extends BaseFrame implements ActionListener {
         } else {
             String adminName = name.getText().trim();
             task = () -> {
-                auth.createAdmin(user, adminName, pass, createdBy);
+                auth.createAdmin(user, adminName, pass);
                 return null;
             };
         }

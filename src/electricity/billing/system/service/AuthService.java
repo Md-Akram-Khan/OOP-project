@@ -1,5 +1,6 @@
 package electricity.billing.system.service;
 
+import electricity.billing.system.common.AppException;
 import electricity.billing.system.db.CustomerDao;
 import electricity.billing.system.db.Database;
 import electricity.billing.system.db.UserDao;

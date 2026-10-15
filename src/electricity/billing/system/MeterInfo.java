@@ -2,7 +2,7 @@ package electricity.billing.system;
 
 import electricity.billing.system.model.BillType;
 import electricity.billing.system.model.Meter;
-import electricity.billing.system.service.CustomerService;
+import electricity.billing.system.client.CustomerClient;
 import java.awt.BorderLayout;
 import java.awt.Choice;
 import java.awt.Font;
@@ -18,7 +18,7 @@ public class MeterInfo extends BaseFrame implements ActionListener {
     private final String meterNumber;
     private final Choice meterType, billType;
     private final JButton submit;
-    private final CustomerService customers = new CustomerService();
+    private final CustomerClient customers = new CustomerClient();
 
     MeterInfo(String meterNumber) {
         super("Meter Info");
@@ -45,9 +45,7 @@ public class MeterInfo extends BaseFrame implements ActionListener {
         lbltype.setBounds(60, 160, 100, 20);
         p.add(lbltype);
         meterType = new Choice();
-        meterType.add("Electric Meter");
-        meterType.add("Solar Meter");
-        meterType.add("Smart Meter");
+        Meter.TYPES.forEach(meterType::add);
         meterType.setBounds(200, 160, 200, 20);
         p.add(meterType);
 

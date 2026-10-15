@@ -1,7 +1,7 @@
 package electricity.billing.system;
 
 import electricity.billing.system.model.Customer;
-import electricity.billing.system.service.CustomerService;
+import electricity.billing.system.client.CustomerClient;
 import java.awt.Color;
 import java.awt.Font;
 import javax.swing.JButton;
@@ -12,7 +12,7 @@ import javax.swing.JPanel;
 public class ViewInformation extends BaseFrame {
 
     private final JPanel infoPanel;
-    private final CustomerService customers = new CustomerService();
+    private final CustomerClient customers = new CustomerClient();
 
     ViewInformation(String meter) {
         super("Customer Profile");
@@ -48,12 +48,7 @@ public class ViewInformation extends BaseFrame {
 
         setVisible(true);
 
-        runAsync(() -> customers.find(meter), found -> {
-            if (found.isEmpty()) {
-                showWarning("No customer details were found for meter " + meter + ".");
-                return;
-            }
-            Customer c = found.get();
+        runAsync(customers::myProfile, c -> {
             name.setText(c.name());
             meternumber.setText(c.meterNo());
             address.setText(c.address());

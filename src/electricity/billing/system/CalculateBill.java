@@ -1,7 +1,7 @@
 package electricity.billing.system;
 
-import electricity.billing.system.service.BillingService;
-import electricity.billing.system.service.CustomerService;
+import electricity.billing.system.client.BillingClient;
+import electricity.billing.system.client.CustomerClient;
 import java.awt.BorderLayout;
 import java.awt.Choice;
 import java.awt.Font;
@@ -20,8 +20,8 @@ public class CalculateBill extends BaseFrame implements ActionListener {
     private final JLabel name, address;
     private final JTextField units;
     private final JButton submit, cancel;
-    private final CustomerService customers = new CustomerService();
-    private final BillingService billing = new BillingService();
+    private final CustomerClient customers = new CustomerClient();
+    private final BillingClient billing = new BillingClient();
 
     CalculateBill() {
         super("Calculate Bill");
@@ -101,13 +101,11 @@ public class CalculateBill extends BaseFrame implements ActionListener {
     private void showCustomer(String meter) {
         name.setText("");
         address.setText("");
-        runAsync(() -> customers.find(meter), found -> {
+        runAsync(() -> customers.find(meter), c -> {
             // Ignore the answer if the admin has already picked another meter.
             if (meter.equals(meterNumber.getSelectedItem())) {
-                found.ifPresent(c -> {
-                    name.setText(c.name());
-                    address.setText(c.address());
-                });
+                name.setText(c.name());
+                address.setText(c.address());
             }
         });
     }

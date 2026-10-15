@@ -1,6 +1,6 @@
 package electricity.billing.system;
 
-import electricity.billing.system.service.BillingService;
+import electricity.billing.system.client.BillingClient;
 import java.awt.Color;
 import java.awt.Desktop;
 import java.awt.Font;
@@ -22,7 +22,7 @@ public class Paytm extends BaseFrame implements ActionListener {
     private final String month;
     private final int year;
     private final JButton payNow, paid, back;
-    private final BillingService billing = new BillingService();
+    private final BillingClient billing = new BillingClient();
 
     Paytm(String meter, String month, int year) {
         super("Online Bill Payment", 730, 400);
@@ -78,7 +78,7 @@ public class Paytm extends BaseFrame implements ActionListener {
             }
         } else if (ae.getSource() == paid) {
             runAsync(() -> {
-                billing.submitPayment(meter, month, year);
+                billing.submitPayment(month, year);
                 return null;
             }, done -> {
                 showInfo("Thanks! Your payment is waiting for the admin to confirm it.");

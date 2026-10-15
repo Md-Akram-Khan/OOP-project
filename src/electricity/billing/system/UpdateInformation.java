@@ -1,8 +1,9 @@
 package electricity.billing.system;
 
 import electricity.billing.system.model.Customer;
-import electricity.billing.system.service.AppException;
-import electricity.billing.system.service.CustomerService;
+import electricity.billing.system.common.AppException;
+import electricity.billing.system.common.Validation;
+import electricity.billing.system.client.CustomerClient;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -17,7 +18,7 @@ public class UpdateInformation extends BaseFrame implements ActionListener {
     private final JLabel name, meternumber;
     private final JTextField tfaddress, tfcity, tfstate, tfemail, tfphone;
     private final JButton update, cancel;
-    private final CustomerService customers = new CustomerService();
+    private final CustomerClient customers = new CustomerClient();
     private Customer loaded;
 
     UpdateInformation(String meter) {
@@ -62,12 +63,8 @@ public class UpdateInformation extends BaseFrame implements ActionListener {
 
         setVisible(true);
 
-        runAsync(() -> customers.find(meter), found -> {
-            if (found.isEmpty()) {
-                showWarning("No customer details were found for meter " + meter + ".");
-                return;
-            }
-            loaded = found.get();
+        runAsync(customers::myProfile, found -> {
+            loaded = found;
             name.setText(loaded.name());
             meternumber.setText(loaded.meterNo());
             tfaddress.setText(loaded.address());
@@ -109,13 +106,13 @@ public class UpdateInformation extends BaseFrame implements ActionListener {
                 tfemail.getText().trim(),
                 tfphone.getText().trim());
         try {
-            CustomerService.validate(changed);
+            Validation.customer(changed);
         } catch (AppException e) {
             showWarning(e.getMessage());
             return;
         }
         runAsync(() -> {
-            customers.updateContact(changed);
+            customers.updateMyContact(changed);
             return null;
         }, done -> {
             showInfo("Your information has been updated.");

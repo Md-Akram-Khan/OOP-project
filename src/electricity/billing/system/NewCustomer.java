@@ -1,8 +1,9 @@
 package electricity.billing.system;
 
 import electricity.billing.system.model.Customer;
-import electricity.billing.system.service.AppException;
-import electricity.billing.system.service.CustomerService;
+import electricity.billing.system.common.AppException;
+import electricity.billing.system.common.Validation;
+import electricity.billing.system.client.CustomerClient;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Font;
@@ -19,7 +20,7 @@ public class NewCustomer extends BaseFrame implements ActionListener {
     private final JPanel p;
     private final JTextField tfname, tfaddress, tfcity, tfstate, tfemail, tfphone;
     private final JButton next, cancel;
-    private final CustomerService customers = new CustomerService();
+    private final CustomerClient customers = new CustomerClient();
 
     NewCustomer() {
         super("Add Customer");
@@ -90,7 +91,7 @@ public class NewCustomer extends BaseFrame implements ActionListener {
                 tfemail.getText().trim(),
                 tfphone.getText().trim());
         try {
-            CustomerService.validate(draft);
+            Validation.customer(draft);
         } catch (AppException e) {
             showWarning(e.getMessage());
             return;

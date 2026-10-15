@@ -1,7 +1,7 @@
 package electricity.billing.system;
 
 import electricity.billing.system.model.Months;
-import electricity.billing.system.service.AppException;
+import electricity.billing.system.common.AppException;
 import java.awt.Choice;
 import java.awt.Color;
 import java.awt.Component;

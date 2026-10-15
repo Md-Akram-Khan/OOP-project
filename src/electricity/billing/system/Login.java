@@ -1,7 +1,7 @@
 package electricity.billing.system;
 
 import electricity.billing.system.model.Role;
-import electricity.billing.system.service.AuthService;
+import electricity.billing.system.client.AuthClient;
 import java.awt.Choice;
 import java.awt.Color;
 import java.awt.Font;
@@ -21,7 +21,7 @@ public class Login extends BaseFrame implements ActionListener {
     private final JTextField username;
     private final JPasswordField password;
     private final Choice role;
-    private final AuthService auth = new AuthService();
+    private final AuthClient auth = new AuthClient();
 
     Login() {
         super("Electricity Billing System");

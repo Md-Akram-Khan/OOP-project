@@ -2,8 +2,8 @@ package electricity.billing.system;
 
 import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatus;
-import electricity.billing.system.service.BillingService;
-import electricity.billing.system.service.CustomerService;
+import electricity.billing.system.client.BillingClient;
+import electricity.billing.system.client.CustomerClient;
 import java.awt.Choice;
 import java.awt.Color;
 import java.awt.Font;
@@ -22,8 +22,8 @@ public class PayBill extends BaseFrame implements ActionListener {
     private final Choice month, year;
     private final JLabel name, units, total, status;
     private final JButton pay, back;
-    private final CustomerService customers = new CustomerService();
-    private final BillingService billing = new BillingService();
+    private final CustomerClient customers = new CustomerClient();
+    private final BillingClient billing = new BillingClient();
     private Bill currentBill;
 
     PayBill(String meter) {
@@ -79,7 +79,7 @@ public class PayBill extends BaseFrame implements ActionListener {
 
         setVisible(true);
 
-        runAsync(() -> customers.find(meter), found -> found.ifPresent(c -> name.setText(c.name())));
+        runAsync(customers::myProfile, c -> name.setText(c.name()));
         loadBill();
     }
 
@@ -105,7 +105,7 @@ public class PayBill extends BaseFrame implements ActionListener {
         total.setText("");
         status.setForeground(Color.DARK_GRAY);
         status.setText("Loading...");
-        runAsync(() -> billing.find(meter, billMonth, billYear), found -> {
+        runAsync(() -> billing.myBill(billMonth, billYear), found -> {
             if (!billMonth.equals(month.getSelectedItem())
                     || billYear != Integer.parseInt(year.getSelectedItem())) {
                 return;

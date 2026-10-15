@@ -1,6 +1,7 @@
 package electricity.billing.system;
 
 import electricity.billing.system.SystemTools.Tool;
+import electricity.billing.system.client.AuthClient;
 import electricity.billing.system.model.UserAccount;
 import java.awt.Font;
 import java.awt.Window;
@@ -27,6 +28,7 @@ public class Project extends BaseFrame implements ActionListener {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
+                new AuthClient().logout();
                 closeAllWindows();
             }
         });
@@ -99,6 +101,7 @@ public class Project extends BaseFrame implements ActionListener {
             case "Notepad" -> launch(Tool.NOTEPAD);
             case "Calculator" -> launch(Tool.CALCULATOR);
             case "Log out" -> {
+                new AuthClient().logout();
                 closeAllWindows();
                 new Login();
             }

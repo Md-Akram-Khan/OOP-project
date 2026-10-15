@@ -1,7 +1,7 @@
 package electricity.billing.system;
 
-import electricity.billing.system.service.BillingService;
-import electricity.billing.system.service.CustomerService;
+import electricity.billing.system.client.BillingClient;
+import electricity.billing.system.client.CustomerClient;
 import java.awt.Choice;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -20,8 +20,8 @@ public class DepositDetails extends BaseFrame implements ActionListener {
     private final Choice meternumber, cmonth, cyear;
     private final JTable table;
     private final JButton search, print, markPaid;
-    private final CustomerService customers = new CustomerService();
-    private final BillingService billing = new BillingService();
+    private final CustomerClient customers = new CustomerClient();
+    private final BillingClient billing = new BillingClient();
 
     DepositDetails() {
         super("Deposit Details");
