@@ -12,18 +12,27 @@ A Java Swing desktop app for an electricity provider, built as a second-year uni
 | Search all bills and confirm payments | Generate a printable bill for any month |
 | Add other admins | Pay online, then report the payment for confirmation |
 
-## OOP design
+## Project structure
 
 ```
-src/electricity/billing/system/
-├── model/      Customer, Bill, Meter, TaxRates, UserAccount (records)
-│               Role, BillStatus, BillType (enums)
-├── billing/    Tariff (interface) ← NormalTariff, IndustrialTariff
-├── db/         Database + one DAO per table (PreparedStatement only)
-├── service/    AuthService, CustomerService, BillingService
-├── security/   PasswordHasher (salted PBKDF2)
-└── *.java      Swing windows, all extending BaseFrame
+├── src/electricity/billing/system/
+│   ├── model/        Customer, Bill, Meter, TaxRates, UserAccount (records)
+│   │                 Role, BillStatus, BillType (enums)
+│   ├── billing/      Tariff (interface) ← NormalTariff, IndustrialTariff
+│   ├── db/           Database + one DAO per table (PreparedStatement only)
+│   ├── service/      AuthService, CustomerService, BillingService
+│   ├── security/     PasswordHasher (salted PBKDF2)
+│   └── *.java        Swing windows, all extending BaseFrame
+├── src/icon/         Images used by the windows
+├── lib/              PostgreSQL JDBC driver
+├── database/         schema.sql (new database), migration-v2.sql (upgrade)
+├── release/          Ready-to-run JAR with its lib/ folder
+├── docs/             ISSUES-CHECKLIST.md
+├── nbproject/, build.xml, manifest.mf    NetBeans project files
+└── .env.example      Template for database connection settings
 ```
+
+## OOP design
 
 - **Encapsulation:** immutable records for domain data; windows never touch SQL.
 - **Abstraction and layering:** UI → services (business rules) → DAOs (SQL) → database.
@@ -37,20 +46,25 @@ src/electricity/billing/system/
 **Requirements:** JDK 17+, a free [Supabase](https://supabase.com) project, and NetBeans (optional).
 
 1. **Database.** In the Supabase SQL Editor, run:
-   - [`supabase-schema.sql`](FullProject/Electricity-Billing-System/supabase-schema.sql) for a new database, or
-   - [`supabase-migration-v2.sql`](FullProject/Electricity-Billing-System/supabase-migration-v2.sql) to upgrade a database made with the original schema.
-2. **Connection.** Copy [`.env.example`](.env.example) to `.env` in the repo root and fill in your Supabase JDBC URL, user and password. Never commit `.env`.
+   - [`database/schema.sql`](database/schema.sql) for a new database, or
+   - [`database/migration-v2.sql`](database/migration-v2.sql) to upgrade a database made with the original schema.
+2. **Connection.** Copy [`.env.example`](.env.example) to `.env` in this folder and fill in your Supabase JDBC URL, user and password. Environment variables with the same names override the file. Never commit `.env`.
 3. **Run** either way:
-   - NetBeans: open `FullProject/Electricity-Billing-System` and run `Main.java`.
-   - JAR: `cd JarApplication`, then `java -jar Electricity_Billing_System.jar`.
+   - NetBeans: open this folder as a project and run `Main.java`.
+   - JAR: `cd release`, then `java -jar Electricity_Billing_System.jar`. Keep `release/lib/` next to the JAR.
 4. **First login.** On the Signup screen, create the first admin ("Admin" is only offered while no admin exists). Add customers from the admin dashboard and give each one their meter number so they can sign up.
 
 ## Payment flow
 
 Customer clicks **Pay Now** (opens Paytm) → clicks **I've Paid** → bill becomes *Pending Verification* → admin confirms it in **Deposit Details** → *Paid*.
 
+## Troubleshooting
+
+- **"Missing SUPABASE_DB_URL"**: the app couldn't find `.env`. Run it from this folder or `release/`, or set the three `SUPABASE_*` environment variables.
+- **Connection errors**: check the host and password in Supabase → Project Settings → Database.
+
 ## Version 2 changes
 
-This version fixes security issues, bugs and design problems found in a review of the original. Among them: open admin sign-up, account takeover through the customer sign-up, SQL injection, plain-text passwords, leaked database connections and a frozen UI. See [ISSUES-CHECKLIST.md](ISSUES-CHECKLIST.md) for the full list and what's still open.
+This version fixes security issues, bugs and design problems found in a review of the original. Among them: open admin sign-up, account takeover through the customer sign-up, SQL injection, plain-text passwords, leaked database connections and a frozen UI. See [docs/ISSUES-CHECKLIST.md](docs/ISSUES-CHECKLIST.md) for the full list and what's still open.
 
 **Known limitation:** as a desktop app talking straight to the database, every copy of the app needs the database credentials. A production version would put an API server between the app and the database.

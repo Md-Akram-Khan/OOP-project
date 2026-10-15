@@ -20,7 +20,7 @@ public class TaxDao {
                 + "from tax where id = 1";
         try (PreparedStatement ps = c.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             if (!rs.next()) {
-                throw new SQLException("Tax rates are not configured. Run supabase-schema.sql to add them.");
+                throw new SQLException("Tax rates are not configured. Run database/schema.sql to add them.");
             }
             return new TaxRates(
                     rs.getBigDecimal("cost_per_unit"),

@@ -4,7 +4,7 @@ Status of every issue found in the project review, plus a few more found while f
 
 **Key:** ✅ Solved · ⚠️ Solved in code, needs an action from you · ❌ Not solved (reason given)
 
-**Summary:** 30 solved · 3 need your action · 3 not solved (36 issues)
+**Summary:** 31 solved · 2 need your action · 3 not solved (36 issues)
 
 ---
 
@@ -17,7 +17,7 @@ Status of every issue found in the project review, plus a few more found while f
 | 3 | Signup said "Account Created Successfully" even when nothing was saved | ✅ | Checks the number of rows updated and shows a clear error. |
 | 4 | **SQL injection** in about 12 places (string-built queries) | ✅ | All SQL now lives in the `db/` DAOs and uses `PreparedStatement`. Names like `O'Brien` work. |
 | 5 | **Plain-text passwords** | ⚠️ | Salted PBKDF2 hashing (`security/PasswordHasher`). Your 2 existing accounts are still plain text until each one logs in once; the app re-hashes them automatically then. |
-| 6 | MySQL root password written in `JarApplication/README.txt` | ⚠️ | Removed from the README. **Change that password** if you use it anywhere else. A copy of the old README is in `backup-original/`, which is now in `.gitignore`. |
+| 6 | MySQL root password written in `JarApplication/README.txt` | ⚠️ | Removed from the README, and the old zips containing it were purged from the GitHub history. **Change that password** if you use it anywhere else. |
 | 7 | *(Found during fixes)* Customer signup auto-filled the customer's name when you typed any meter number, so anyone could look up names | ✅ | Removed. Customers no longer see a name until they've proved who they are. |
 | 8 | *(Found during fixes)* **Every copy of the app contains the database password**, so a customer could connect to Supabase directly and bypass all the rules above | ❌ | Architectural. Fixing it needs a backend API (or Supabase Auth with row-level security) between the app and the database. That's a project-sized change, beyond a bug fix. |
 
@@ -59,19 +59,19 @@ Status of every issue found in the project review, plus a few more found while f
 
 | # | Issue | Status | What changed |
 |---|---|---|---|
-| 33 | 43 JVM crash logs (`hs_err_pid*.log`, `replay_pid*.log`) | ⚠️ | Added to `.gitignore`, but **not deleted**: file deletion was blocked in this session. To delete them yourself, run this in `FullProject/Electricity-Billing-System`: `del hs_err_pid*.log replay_pid*.log` |
-| 34 | `JarApplication` was out of date (MySQL driver, old code) | ✅ | Rebuilt from the new source with the PostgreSQL driver. The old JAR and drivers are in `backup-original/JarApplication/`. |
-| 35 | `.ibd` files couldn't be restored the way the README said, and were packed into the JAR | ✅ | Moved to `legacy-mysql-data/` with real restore steps. The old data itself was **not** recovered. |
+| 33 | 43 JVM crash logs (`hs_err_pid*.log`, `replay_pid*.log`) | ✅ | Removed during the folder clean-up, and `.gitignore`d. |
+| 34 | The packaged JAR was out of date (MySQL driver, old code) | ✅ | Rebuilt from the new source with the PostgreSQL driver; now in `release/`. |
+| 35 | `.ibd` files couldn't be restored the way the README said, and were packed into the JAR | ✅ | Removed from the source tree and the JAR, then deleted at your request. The old data was **not** recovered. |
 | 36 | README referenced a missing `.env.example` | ✅ | Added `.env.example`; both READMEs rewritten. |
 
 ---
 
 ## Database migration: applied ✅
 
-- File: `FullProject/Electricity-Billing-System/supabase-migration-v2.sql`
+- File: `database/migration-v2.sql`
 - First dry-run against your real data inside a transaction and rolled back (17 / 17 checks passed), then **applied with your go-ahead on 2026-10-16**.
 - Afterwards: all 14 keys and constraints are present, and every existing row was kept (login 2, customer 1, meter_info 1, tax 1, bill 0).
-- For a brand-new Supabase project, run `supabase-schema.sql` instead.
+- For a brand-new Supabase project, run `database/schema.sql` instead.
 
 ## Testing
 
@@ -83,7 +83,6 @@ Status of every issue found in the project review, plus a few more found while f
 | Rebuilt JAR, read-only run against the live migrated database | ✅ Admin, customers, meters, tax rates and bills all load |
 | Clicking through every window by hand | ❌ Not done: I can't operate the GUI. Please test login, signup, add customer, calculate, pay and confirm. |
 
-## Where things are
+## Project layout
 
-- `backup-original/`: copies of the original source, READMEs, schema and JAR, made before any change. It also contains a few new files copied in by accident; ignore those. Delete the folder when you're happy.
-- `FullProject/Electricity-Billing-System/lib/rs2xml.jar`: no longer used (removed from the classpath), safe to delete.
+The folder was reorganised after these fixes (NetBeans project at the top level, SQL in `database/`, runnable JAR in `release/`). See the README for the full layout.
