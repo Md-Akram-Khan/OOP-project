@@ -1,0 +1,13 @@
+.env
+
+# Pre-fix copies of the project; includes an old README with a password in it
+backup-original/
+
+# JVM crash dumps
+hs_err_pid*.log
+replay_pid*.log
+
+# NetBeans build output and per-user settings
+FullProject/Electricity-Billing-System/build/
+FullProject/Electricity-Billing-System/dist/
+FullProject/Electricity-Billing-System/nbproject/private/
