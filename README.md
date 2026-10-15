@@ -29,7 +29,11 @@ A Java Swing desktop app for an electricity provider, built as a second-year uni
 
 ```
 ├── src/electricity/billing/system/
-│   ├── *.java        Swing windows, all extending BaseFrame                 (app)
+│   ├── Main.java     App entry point: theme, then splash screen             (app)
+│   ├── ui/           Splash, sign-in and main windows; Page base class        (app)
+│   │   ├── theme/        Theme (colours, fonts, light/dark), Icons, Fmt
+│   │   ├── components/   Card, Btn, Sidebar, BarChart, DataTable, Toast, ...
+│   │   └── pages/        admin/ and customer/ screens
 │   ├── client/       ApiClient + AuthClient, CustomerClient, BillingClient   (app)
 │   ├── server/       ApiServer, Router, Endpoints, SessionStore, LoginThrottle (server)
 │   ├── service/      AuthService, CustomerService, BillingService            (server)
@@ -38,8 +42,7 @@ A Java Swing desktop app for an electricity provider, built as a second-year uni
 │   ├── billing/      Tariff interface ← NormalTariff, IndustrialTariff       (server)
 │   ├── model/        Customer, Bill, Meter, TaxRates, UserAccount, enums     (shared)
 │   └── common/       Api request/response records, Json, Config, Validation  (shared)
-├── src/icon/         Images used by the windows
-├── lib/              Gson (JSON) and the PostgreSQL JDBC driver
+├── lib/              FlatLaf + Inter font (UI), Gson (JSON), PostgreSQL JDBC driver
 ├── database/         schema.sql (new database), migration-v2.sql (upgrade)
 ├── scripts/          build-release.ps1
 ├── release/          client/ and server/, each a ready-to-run JAR with its lib/
@@ -49,12 +52,28 @@ A Java Swing desktop app for an electricity provider, built as a second-year uni
 
 ## OOP design
 
-- **Encapsulation:** immutable records for domain data; windows never touch SQL or HTTP directly.
+- **Encapsulation:** immutable records for domain data; pages never touch SQL or HTTP directly.
 - **Abstraction and layering:** windows → API clients → HTTP → endpoints → services (business rules) → DAOs (SQL) → database.
-- **Inheritance:** every window extends `BaseFrame`, which holds the shared layout, styling and background-task handling.
+- **Inheritance:** every screen extends `Page`; reusable widgets such as `StatCard` extend `Card`.
 - **Polymorphism:** `Tariff.forBillType(...)` returns the pricing strategy for a meter; adding a new tariff means adding one class.
 
 **Bill formula:** units × cost per unit (× industrial multiplier for Industrial meters) + meter rent + service charge + service tax + fixed tax.
+
+## Design
+
+The interface uses a custom design system called **Midnight Grid**, built on [FlatLaf](https://www.formdev.com/flatlaf/) with the Inter font:
+
+- **Colours:** an electric blue to aqua brand gradient, an amber accent and a deep navy sidebar. Light and dark modes switch live (moon or sun button) and the choice is remembered.
+- **Layout:** one main window with sidebar navigation. Pages fade and slide in.
+- **Motion:**
+  - animated aurora "power-line" backgrounds on the splash and sign-in screens
+  - count-up numbers and growing bar charts on the dashboards
+  - a sliding sidebar highlight and cards that glow on hover
+  - slide-in notifications, and a shake when a sign-in fails
+- **Screens:**
+  - **Admin:** dashboard with a billing chart, customer list with search, a 2-step "new customer" wizard, live bill preview as you type, bills with filters and one-click payment confirmation, and team management
+  - **Customer:** home with the latest bill and a usage chart, bill history, a printable invoice, a 2-step pay flow, and an editable profile
+- **Icons:** all drawn in code (`ui/theme/Icons.java`), so they're sharp at any size.
 
 ## Setup
 

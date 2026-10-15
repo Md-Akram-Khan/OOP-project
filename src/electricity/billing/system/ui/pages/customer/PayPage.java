@@ -106,7 +106,7 @@ public class PayPage extends Page {
             JPanel row = Ui.clear(new BorderLayout(16, 0));
             Card listCard = new Card(new BorderLayout(0, 16));
             listCard.add(Ui.vbox(4, Txt.h2("Open bills"), Txt.small("Choose the bill you're paying")), BorderLayout.NORTH);
-            listCard.add(list, BorderLayout.NORTH);
+            listCard.add(Ui.top(list), BorderLayout.CENTER);
             row.add(listCard, BorderLayout.CENTER);
             row.add(stepsHolder, BorderLayout.EAST);
             content.add(row, BorderLayout.CENTER);

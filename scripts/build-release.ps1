@@ -8,6 +8,8 @@ Set-Location $root
 
 $pkg = 'src/electricity/billing/system'
 $gson = 'lib/gson-2.11.0.jar'
+$flatlaf = 'lib/flatlaf-3.7.2.jar'
+$inter = 'lib/flatlaf-fonts-inter-4.1.jar'
 $pg = 'lib/postgresql-42.7.8.jar'
 $work = 'build/release'
 
@@ -41,9 +43,10 @@ function New-Jar([string]$name, [string[]]$sources, [string]$classpath, [string]
 
 $shared = @('common', 'model')
 
+$ui = @('ui', 'ui/theme', 'ui/components', 'ui/pages/admin', 'ui/pages/customer')
 New-Jar 'Electricity_Billing_System' `
-    (Get-Sources (@('.', 'client') + $shared)) $gson `
-    'electricity.billing.system.Main' @($gson) 'release/client' $true
+    (Get-Sources (@('.', 'client') + $ui + $shared)) "$gson;$flatlaf;$inter" `
+    'electricity.billing.system.Main' @($gson, $flatlaf, $inter) 'release/client' $false
 
 New-Jar 'ebs-server' `
     (Get-Sources (@('server', 'service', 'db', 'security', 'billing') + $shared)) "$gson;$pg" `
