@@ -54,6 +54,11 @@ final class Router implements HttpHandler {
                 sendError(exchange, 400, e.getMessage());
                 return;
             } catch (Exception e) {
+                if (electricity.billing.system.db.Database.isConnectionFailure(e)) {
+                    LOG.log(Level.SEVERE, exchange.getRequestMethod() + " " + path + ": database unreachable", e);
+                    sendError(exchange, 503, "The server can't reach the database right now. Please try again in a moment.");
+                    return;
+                }
                 // Details stay in the server log; the client only learns that something failed.
                 LOG.log(Level.SEVERE, exchange.getRequestMethod() + " " + path + " failed", e);
                 sendError(exchange, 500, "The server hit an unexpected error. Please try again.");

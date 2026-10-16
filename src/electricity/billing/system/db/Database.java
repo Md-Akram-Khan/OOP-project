@@ -50,6 +50,38 @@ public final class Database {
         }
     }
 
+    /** Opens and closes one connection, so start-up fails early with a clear reason. */
+    public static void checkConnection() throws SQLException {
+        try (Connection c = open()) {
+            c.isValid(5);
+        }
+    }
+
+    /** True if the failure means the database couldn't be reached at all (network, DNS, outage). */
+    public static boolean isConnectionFailure(Throwable error) {
+        for (Throwable t = error; t != null; t = t.getCause()) {
+            if (t instanceof SQLException sql && sql.getSQLState() != null && sql.getSQLState().startsWith("08")) {
+                return true;
+            }
+            if (t instanceof java.net.UnknownHostException || t instanceof java.net.ConnectException
+                    || t instanceof java.net.SocketTimeoutException || t instanceof java.net.NoRouteToHostException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The host:port part of the JDBC URL, safe to print (no credentials). */
+    public static String host() {
+        String url = Config.get("SUPABASE_DB_URL", "");
+        int start = url.indexOf("//");
+        if (start < 0) {
+            return "(unknown)";
+        }
+        int end = url.indexOf('/', start + 2);
+        return url.substring(start + 2, end < 0 ? url.length() : end);
+    }
+
     public static boolean isUniqueViolation(SQLException e) {
         return UNIQUE_VIOLATION.equals(e.getSQLState());
     }

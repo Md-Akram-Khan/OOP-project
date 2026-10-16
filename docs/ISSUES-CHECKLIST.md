@@ -38,9 +38,9 @@ Status of every issue found in the project review, plus a few more found while f
 | 19 | "Industial" typo | ✅ | Fixed in the UI. The migration fixes existing rows, and old values are still read correctly. |
 | 20 | Bill type didn't affect the price | ✅ | `Tariff` interface with `NormalTariff` and `IndustrialTariff`. Industrial = cost per unit × `industrial_multiplier`. The **1.5 default is my assumption**; change it in the `tax` table. |
 | 21 | Meter type (Electric / Solar / Smart) doesn't affect the price | ❌ | Left as information only. Pricing solar or smart meters differently is a business rule I'd be inventing. Easy to add as another `Tariff` once you decide the rule. |
-| 22 | `service_tax` is added as a flat amount, not a percentage | ❌ | **Your decision.** Treating the stored 57 as 57% would be wrong, so it stays a flat Rs. 57 and is labelled as such. Switching to a percentage needs a new rate value. |
+| 22 | `service_tax` is added as a flat amount, not a percentage | ❌ | **Your decision.** Treating the stored 57 as 57% would be wrong, so it stays a flat Tk 57 and is labelled as such. Switching to a percentage needs a new rate value. |
 | 23 | Font name "Senserif" typo | ✅ | Generate Bill now uses a monospaced font so the columns line up. |
-| 24 | Notepad and Calculator buttons only worked on Windows | ✅ | Picks the right app for Windows, macOS or Linux, and shows a message if it's missing. Only tested on Windows. |
+| 24 | Notepad and Calculator buttons only worked on Windows | ✅ | Removed. They only opened the operating system's own apps and weren't connected to billing; the live bill preview covers the calculator's job. |
 | 25 | *(Found during fixes)* Splash screen changed windows from a background thread | ✅ | Uses a Swing `Timer`. |
 | 26 | *(Found during fixes)* No input validation: empty customers, bad emails and phone numbers were accepted | ✅ | `CustomerService.validate` lists every problem at once. Usernames are 3-30 characters; passwords need at least 8 plus a confirm field. |
 | 27 | *(Found during fixes)* Multiple rows in `tax` would have been added together | ✅ | Migration enforces exactly one tax row. |

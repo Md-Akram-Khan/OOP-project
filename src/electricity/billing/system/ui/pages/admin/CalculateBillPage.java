@@ -48,7 +48,7 @@ public class CalculateBillPage extends Page {
     private final Txt energy = white("—", Theme.semibold(14), 255);
     private final Txt energyDetail = white(" ", Theme.regular(12), 150);
     private final Txt fixed = white("—", Theme.semibold(14), 255);
-    private final GradientText total = new GradientText("Rs. 0.00", Theme.semibold(40), Theme.AQUA, Theme.AMBER);
+    private final GradientText total = new GradientText(Fmt.money(0), Theme.semibold(40), Theme.AQUA, Theme.AMBER);
     private final Txt hint = white("Enter units to see the total.", Theme.regular(13), 160);
     private final Timer debounce;
     private double shownTotal;

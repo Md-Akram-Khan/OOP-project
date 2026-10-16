@@ -1,10 +1,8 @@
 package electricity.billing.system.ui;
 
 import electricity.billing.system.model.UserAccount;
-import electricity.billing.system.ui.SystemTools.Tool;
 import electricity.billing.system.ui.components.FadeHost;
 import electricity.billing.system.ui.components.Sidebar;
-import electricity.billing.system.ui.components.Toast;
 import electricity.billing.system.ui.components.Ui;
 import electricity.billing.system.ui.pages.admin.AddCustomerPage;
 import electricity.billing.system.ui.pages.admin.BillsPage;
@@ -25,7 +23,6 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import javax.swing.JFrame;
@@ -76,9 +73,6 @@ public class AppWindow extends JFrame {
             add("profile", "Profile", Glyph.USER, new ProfilePage(app));
             first = "home";
         }
-        sidebar.section("Tools");
-        sidebar.action("Notepad", Glyph.PEN, () -> launch(Tool.NOTEPAD));
-        sidebar.action("Calculator", Glyph.CALCULATOR, () -> launch(Tool.CALCULATOR));
 
         JPanel root = Ui.themed(new BorderLayout(), Theme::bg);
         sidebar.setPreferredSize(new Dimension(Sidebar.WIDTH, 10));
@@ -112,13 +106,5 @@ public class AppWindow extends JFrame {
         app.auth.logout();
         dispose();
         new AuthWindow().setVisible(true);
-    }
-
-    private void launch(Tool tool) {
-        try {
-            SystemTools.launch(tool);
-        } catch (IOException e) {
-            Toast.error(this, "Couldn't open " + tool.name().toLowerCase() + " on this computer.");
-        }
     }
 }

@@ -11,6 +11,9 @@ import java.util.Locale;
 /** Display formatting for money, numbers, periods and greetings. */
 public final class Fmt {
 
+    /** Bangladeshi taka, matching what SSLCommerz charges. */
+    public static final String CURRENCY = "Tk ";
+
     private static final DecimalFormat MONEY = new DecimalFormat("#,##0.00");
     private static final DecimalFormat WHOLE = new DecimalFormat("#,##0");
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", Locale.ENGLISH);
@@ -19,22 +22,22 @@ public final class Fmt {
     }
 
     public static String money(BigDecimal amount) {
-        return "Rs. " + MONEY.format(amount == null ? BigDecimal.ZERO : amount);
+        return CURRENCY + MONEY.format(amount == null ? BigDecimal.ZERO : amount);
     }
 
     public static String money(double amount) {
-        return "Rs. " + MONEY.format(amount);
+        return CURRENCY + MONEY.format(amount);
     }
 
-    /** Rs. 1.2K / Rs. 3.4M style, for chart axes and tight spaces. */
+    /** Tk 1.2K / Tk 3.4M style, for chart axes and tight spaces. */
     public static String moneyShort(double amount) {
         if (amount >= 1_000_000) {
-            return "Rs. " + new DecimalFormat("0.#").format(amount / 1_000_000) + "M";
+            return CURRENCY + new DecimalFormat("0.#").format(amount / 1_000_000) + "M";
         }
         if (amount >= 1_000) {
-            return "Rs. " + new DecimalFormat("0.#").format(amount / 1_000) + "K";
+            return CURRENCY + new DecimalFormat("0.#").format(amount / 1_000) + "K";
         }
-        return "Rs. " + WHOLE.format(amount);
+        return CURRENCY + WHOLE.format(amount);
     }
 
     public static String number(double value) {

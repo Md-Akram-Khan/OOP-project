@@ -115,13 +115,6 @@ public class Sidebar extends JPanel {
         nav.add(Box.createVerticalStrut(2));
     }
 
-    /** A one-off action such as opening an external tool. */
-    public void action(String label, Glyph glyph, Runnable action) {
-        NavItem item = new NavItem(null, label, glyph, action);
-        nav.add(Ui.left(item));
-        nav.add(Box.createVerticalStrut(2));
-    }
-
     public void select(String key) {
         NavItem next = items.stream().filter(i -> key.equals(i.key)).findFirst().orElse(null);
         if (next == null || next == selected) {

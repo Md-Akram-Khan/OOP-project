@@ -1,15 +1,22 @@
 package electricity.billing.system.ui.pages.customer;
 
+import electricity.billing.system.client.PaymentClient;
+import electricity.billing.system.common.Api;
 import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatus;
+import electricity.billing.system.model.Payment;
 import electricity.billing.system.ui.AppContext;
 import electricity.billing.system.ui.Page;
+import electricity.billing.system.ui.Period;
 import electricity.billing.system.ui.components.Badge;
 import electricity.billing.system.ui.components.Btn;
 import electricity.billing.system.ui.components.Card;
 import electricity.billing.system.ui.components.ChoiceCard;
 import electricity.billing.system.ui.components.EmptyState;
+import electricity.billing.system.ui.components.FadeHost;
 import electricity.billing.system.ui.components.IconTile;
+import electricity.billing.system.ui.components.Spinner;
+import electricity.billing.system.ui.components.SuccessCheck;
 import electricity.billing.system.ui.components.Tasks;
 import electricity.billing.system.ui.components.Toast;
 import electricity.billing.system.ui.components.Txt;
@@ -18,72 +25,118 @@ import electricity.billing.system.ui.theme.Fmt;
 import electricity.billing.system.ui.theme.Icons.Glyph;
 import electricity.billing.system.ui.theme.Theme;
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.Box;
+import javax.swing.JComponent;
 import javax.swing.JPanel;
+import javax.swing.Timer;
 
-/** Pay an open bill: pick it, pay on Paytm, then report the payment for the admin to confirm. */
+/**
+ * Pay an open bill online with SSLCommerz: the app opens SSLCommerz's secure
+ * checkout in the browser, then waits while the server confirms the payment
+ * with the gateway. The bill turns Paid on its own; no admin step is needed.
+ */
 public class PayPage extends Page {
 
-    private static final String PAYTM = "https://paytm.com/online-payments";
+    private static final int POLL_MS = 3000;
+    private static final long GIVE_UP_MS = 20 * 60 * 1000;
 
+    private final PaymentClient payments = new PaymentClient();
     private final JPanel list = Ui.vbox(0);
-    private final JPanel stepsHolder = Ui.clear(new BorderLayout());
-    private final Txt selectedLabel = Txt.h2(" ");
-    private final Txt selectedAmount = Txt.display(" ");
-    private final Btn paid = new Btn("I've paid", Glyph.CHECK, Btn.Style.SUCCESS).fullWidth();
     private final JPanel content = Ui.clear(new BorderLayout());
+    private final FadeHost checkout = new FadeHost();
     private final List<ChoiceCard> cards = new ArrayList<>();
+
+    private final Txt payingLabel = Txt.h2(" ");
+    private final Txt payingAmount = Txt.display(" ");
+    private final Btn payBtn = new Btn("Pay with SSLCommerz", Glyph.CREDIT_CARD, Btn.Style.PRIMARY).fullWidth();
+    private final Badge modeBadge = new Badge("Sandbox · test mode", Theme.WARNING);
+    private final Txt testCard = Txt.small("Test card 4111 1111 1111 1111 · exp 12/26 · CVV 111 · OTP 111111").wrap(300);
+    private final Txt doneText = Txt.muted(" ").wrap(300);
+    private final SuccessCheck check = new SuccessCheck();
+    private final Btn manualPaid = new Btn("I've paid another way", Glyph.CHECK, Btn.Style.SECONDARY).fullWidth();
+
+    private final JPanel readyView;
+    private final JPanel waitingView;
+    private final JPanel doneView;
+    private final JPanel offlineView;
+
+    private Api.PaymentConfig config;
     private Bill chosen;
+    private Api.PaymentStart active;
+    private Timer poller;
+    private long pollStarted;
+    private boolean polling;
 
     public PayPage(AppContext app) {
         super(app);
-        add(header("Pay bill", "Settle an open bill online in two steps."), BorderLayout.NORTH);
+        add(header("Pay bill", "Pay securely online with SSLCommerz: cards, mobile banking and more."), BorderLayout.NORTH);
 
-        Btn openPaytm = new Btn("Open Paytm", Glyph.CREDIT_CARD, Btn.Style.PRIMARY).fullWidth();
-        openPaytm.addActionListener(e -> {
-            try {
-                Desktop.getDesktop().browse(new URI(PAYTM));
-            } catch (Exception ex) {
-                Toast.error(this, "Couldn't open the browser. Visit " + PAYTM + " instead.");
+        payBtn.addActionListener(e -> startPayment());
+        manualPaid.addActionListener(e -> reportManualPayment());
+
+        readyView = Ui.vbox(14,
+                Txt.caps("Paying"), payingLabel, payingAmount, modeBadge,
+                Box.createVerticalStrut(2), payBtn,
+                Txt.small("You'll pay on SSLCommerz's secure page in your browser. "
+                        + "This page updates by itself when the payment is confirmed.").wrap(300),
+                testCard);
+
+        Btn reopen = new Btn("Reopen payment page", Glyph.ARROW_RIGHT, Btn.Style.SECONDARY).trailingIcon().fullWidth();
+        reopen.addActionListener(e -> openBrowser(active == null ? null : active.gatewayUrl()));
+        Btn stop = new Btn("Cancel", Btn.Style.GHOST).fullWidth();
+        stop.addActionListener(e -> {
+            stopPolling();
+            showReady();
+        });
+        waitingView = centred(new Spinner(64), Txt.h2("Waiting for your payment"),
+                Txt.muted("Finish paying in your browser. We'll confirm it with SSLCommerz automatically.").wrap(290),
+                Box.createVerticalStrut(6), reopen, stop);
+
+        Btn invoice = new Btn("View invoice", Glyph.FILE_TEXT, Btn.Style.PRIMARY).fullWidth();
+        invoice.addActionListener(e -> {
+            if (chosen != null) {
+                app.go("statement", new Period(chosen.month(), chosen.year()));
             }
         });
-        paid.addActionListener(e -> reportPayment());
+        doneView = centred(check, Txt.h2("Payment received"), doneText, Box.createVerticalStrut(6), invoice);
 
-        Card steps = new Card(new BorderLayout()).pad(26, 26, 26, 26);
-        steps.add(Ui.vbox(16,
-                Txt.caps("Paying"), selectedLabel, selectedAmount,
-                Box.createVerticalStrut(4),
-                step(1, "Pay on Paytm", "Opens Paytm's payment page in your browser."), openPaytm,
-                Box.createVerticalStrut(4),
-                step(2, "Tell us you've paid", "Your bill shows Paid once an admin confirms it."), paid), BorderLayout.NORTH);
-        stepsHolder.add(Ui.fixedWidth(steps, 380), BorderLayout.NORTH);
+        offlineView = Ui.vbox(14,
+                new IconTile(Glyph.INFO, 42, Theme.WARNING),
+                Txt.h3("Online payment isn't available"),
+                Txt.muted("The server hasn't been set up with SSLCommerz yet. "
+                        + "If you've paid another way, let us know and an admin will confirm it.").wrap(300),
+                manualPaid);
 
-        Card listCard = new Card(new BorderLayout(0, 16));
-        listCard.add(Ui.vbox(4, Txt.h2("Open bills"), Txt.small("Choose the bill you're paying")), BorderLayout.NORTH);
-        listCard.add(list, BorderLayout.CENTER);
-
-        JPanel row = Ui.clear(new BorderLayout(16, 0));
-        row.add(listCard, BorderLayout.CENTER);
-        row.add(stepsHolder, BorderLayout.EAST);
-        content.add(row, BorderLayout.CENTER);
         body(content);
     }
 
-    private static JPanel step(int number, String title, String text) {
-        JPanel badge = Ui.clear(new BorderLayout());
-        IconTile tile = IconTile.brand(number == 1 ? Glyph.CREDIT_CARD : Glyph.CHECK_CIRCLE, 36);
-        badge.add(tile, BorderLayout.NORTH);
-        return Ui.hbox(12, badge, Ui.vbox(3, Txt.h3(number + ". " + title), Txt.small(text).wrap(215)));
+    private static JPanel centred(Component... parts) {
+        JPanel stack = Ui.vbox(12, parts);
+        for (Component c : stack.getComponents()) {
+            if (c instanceof JComponent j) {
+                j.setAlignmentX(Component.CENTER_ALIGNMENT);
+            }
+        }
+        return stack;
     }
 
     @Override
     public void onShow(Object param) {
-        Tasks.run(this, app.billing::myBills, this::render);
+        if (polling) {
+            return;
+        }
+        Tasks.run(this, () -> new Object[] {payments.config(), app.billing.myBills()}, result -> {
+            config = (Api.PaymentConfig) result[0];
+            @SuppressWarnings("unchecked")
+            List<Bill> bills = (List<Bill>) result[1];
+            render(bills);
+        });
     }
 
     private void render(List<Bill> bills) {
@@ -103,12 +156,15 @@ public class PayPage extends Page {
             content.setPreferredSize(new Dimension(10, 420));
         } else {
             content.setPreferredSize(null);
-            JPanel row = Ui.clear(new BorderLayout(16, 0));
             Card listCard = new Card(new BorderLayout(0, 16));
             listCard.add(Ui.vbox(4, Txt.h2("Open bills"), Txt.small("Choose the bill you're paying")), BorderLayout.NORTH);
             listCard.add(Ui.top(list), BorderLayout.CENTER);
+            Card checkoutCard = new Card(new BorderLayout()).pad(26, 26, 26, 26);
+            checkoutCard.add(checkout, BorderLayout.NORTH);
+
+            JPanel row = Ui.clear(new BorderLayout(16, 0));
             row.add(listCard, BorderLayout.CENTER);
-            row.add(stepsHolder, BorderLayout.EAST);
+            row.add(Ui.top(Ui.fixedWidth(checkoutCard, 390)), BorderLayout.EAST);
             content.add(row, BorderLayout.CENTER);
 
             for (Bill bill : open) {
@@ -129,33 +185,125 @@ public class PayPage extends Page {
                 list.add(Box.createVerticalStrut(8));
             }
             choose(open.get(0), cards.get(0));
+            showReady();
         }
         content.revalidate();
         content.repaint();
     }
 
     private void choose(Bill bill, ChoiceCard card) {
+        if (polling) {
+            return;
+        }
         chosen = bill;
         cards.forEach(c -> c.setSelected(c == card));
-        selectedLabel.setText(Fmt.period(bill.month(), bill.year()));
-        selectedAmount.setText(Fmt.money(bill.total()));
+        payingLabel.setText(Fmt.period(bill.month(), bill.year()));
+        payingAmount.setText(Fmt.money(bill.total()));
     }
 
-    private void reportPayment() {
+    private void showReady() {
+        boolean online = config != null && config.enabled();
+        modeBadge.setVisible(online && config.sandbox());
+        testCard.setVisible(online && config.sandbox());
+        checkout.show(online ? readyView : offlineView);
+    }
+
+    private void startPayment() {
         if (chosen == null) {
             return;
         }
         Bill bill = chosen;
-        paid.setBusy(true, "Sending…");
+        payBtn.setBusy(true, "Opening secure checkout…");
+        Tasks.run(() -> payments.start(bill.month(), bill.year()), start -> {
+            payBtn.setBusy(false, null);
+            active = start;
+            openBrowser(start.gatewayUrl());
+            checkout.show(waitingView);
+            startPolling();
+        }, error -> {
+            payBtn.setBusy(false, null);
+            Toast.error(this, Tasks.message(error));
+        });
+    }
+
+    private void openBrowser(String url) {
+        if (url == null) {
+            return;
+        }
+        try {
+            Desktop.getDesktop().browse(new URI(url));
+        } catch (Exception e) {
+            Toast.error(this, "Couldn't open your browser. Copy this address into it: " + url);
+        }
+    }
+
+    private void startPolling() {
+        stopPolling();
+        polling = true;
+        pollStarted = System.currentTimeMillis();
+        poller = new Timer(POLL_MS, e -> poll());
+        poller.start();
+    }
+
+    private void stopPolling() {
+        polling = false;
+        if (poller != null) {
+            poller.stop();
+        }
+    }
+
+    private boolean pollInFlight;
+
+    private void poll() {
+        if (active == null || pollInFlight) {
+            return;
+        }
+        if (System.currentTimeMillis() - pollStarted > GIVE_UP_MS) {
+            stopPolling();
+            showReady();
+            Toast.info(this, "Stopped waiting. If you did pay, your bill will update once it's confirmed.");
+            return;
+        }
+        String tranId = active.tranId();
+        pollInFlight = true;
+        Tasks.run(() -> payments.status(tranId), state -> {
+            pollInFlight = false;
+            if (!polling || active == null || !tranId.equals(active.tranId())) {
+                return;
+            }
+            if (state.status() == Payment.Status.PAID) {
+                stopPolling();
+                boolean review = state.billStatus() == BillStatus.PENDING;
+                doneText.setText(review
+                        ? "SSLCommerz flagged this payment for a quick check. An admin will confirm it shortly."
+                        : "Thanks! Your " + chosen.month() + " " + chosen.year() + " bill is now paid.");
+                checkout.show(doneView);
+                check.play();
+                Toast.success(this, "Payment of " + payingAmount.getText() + " received.");
+            } else if (state.status() == Payment.Status.FAILED || state.status() == Payment.Status.CANCELLED) {
+                stopPolling();
+                Toast.error(this, state.status() == Payment.Status.CANCELLED
+                        ? "Payment cancelled. Nothing was charged." : "The payment didn't go through. Nothing was charged.");
+                showReady();
+            }
+        }, error -> pollInFlight = false);
+    }
+
+    private void reportManualPayment() {
+        if (chosen == null) {
+            return;
+        }
+        Bill bill = chosen;
+        manualPaid.setBusy(true, "Sending…");
         Tasks.run(() -> {
             app.billing.submitPayment(bill.month(), bill.year());
             return null;
         }, done -> {
-            paid.setBusy(false, null);
-            Toast.success(this, "Thanks! Your " + bill.month() + " payment is waiting for confirmation.");
+            manualPaid.setBusy(false, null);
+            Toast.success(this, "Thanks! Your " + bill.month() + " payment is waiting for an admin to confirm it.");
             onShow(null);
         }, error -> {
-            paid.setBusy(false, null);
+            manualPaid.setBusy(false, null);
             Toast.error(this, Tasks.message(error));
         });
     }

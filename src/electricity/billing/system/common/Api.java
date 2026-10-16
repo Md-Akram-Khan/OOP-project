@@ -1,6 +1,8 @@
 package electricity.billing.system.common;
 
+import electricity.billing.system.model.BillStatus;
 import electricity.billing.system.model.BillType;
+import electricity.billing.system.model.Payment;
 import electricity.billing.system.model.Role;
 import electricity.billing.system.model.TaxRates;
 import electricity.billing.system.model.UserAccount;
@@ -40,6 +42,20 @@ public final class Api {
 
     /** What a bill would cost, without saving it. */
     public record BillPreview(BillType billType, int units, BigDecimal energyCharge, TaxRates rates, BigDecimal total) {
+    }
+
+    /** Whether online payment is available, and in which mode. */
+    public record PaymentConfig(boolean enabled, boolean sandbox, String currency) {
+    }
+
+    public record PaymentStartRequest(String month, int year) {
+    }
+
+    /** Where to send the customer's browser to pay, and the reference to poll with. */
+    public record PaymentStart(String tranId, String gatewayUrl, boolean sandbox) {
+    }
+
+    public record PaymentState(String tranId, Payment.Status status, BillStatus billStatus) {
     }
 
     public record AdminExists(boolean exists) {

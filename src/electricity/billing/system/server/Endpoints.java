@@ -9,6 +9,7 @@ import electricity.billing.system.model.UserAccount;
 import electricity.billing.system.service.AuthService;
 import electricity.billing.system.service.BillingService;
 import electricity.billing.system.service.CustomerService;
+import electricity.billing.system.service.PaymentService;
 
 /**
  * Every API endpoint and who may call it.
@@ -22,12 +23,16 @@ final class Endpoints {
     private final AuthService auth = new AuthService();
     private final CustomerService customers = new CustomerService();
     private final BillingService billing = new BillingService();
+    private final PaymentService payments;
+    private final String publicUrl;
     private final SessionStore sessions;
     private final LoginThrottle throttle;
 
-    Endpoints(SessionStore sessions, LoginThrottle throttle) {
+    Endpoints(SessionStore sessions, LoginThrottle throttle, PaymentService payments, String publicUrl) {
         this.sessions = sessions;
         this.throttle = throttle;
+        this.payments = payments;
+        this.publicUrl = publicUrl;
     }
 
     void register(Router router) {
@@ -122,6 +127,20 @@ final class Endpoints {
             Api.BillKey b = r.body(Api.BillKey.class);
             billing.submitPayment(me.meterNo(), month(b.month()), Request.checkYear(b.year()));
             return null;
+        });
+        // Online payments (SSLCommerz). The amount always comes from the bill on the server.
+        router.add("GET", "/api/payments/config", r -> {
+            r.requireUser();
+            return payments.config();
+        });
+        router.add("POST", "/api/payments/start", r -> {
+            UserAccount me = r.requireCustomer();
+            Api.PaymentStartRequest b = r.body(Api.PaymentStartRequest.class);
+            return payments.start(me.meterNo(), month(b.month()), Request.checkYear(b.year()), publicUrl);
+        });
+        router.add("GET", "/api/payments/status", r -> {
+            UserAccount me = r.requireCustomer();
+            return payments.status(requireParam(r, "tran"), me.meterNo());
         });
         router.add("POST", "/api/bills/confirm", r -> {
             r.requireAdmin();

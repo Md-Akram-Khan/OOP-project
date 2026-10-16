@@ -2,6 +2,24 @@
 
 A Java Swing desktop app for an electricity provider, built as a second-year university OOP project. Admins manage customers, meters and monthly bills; customers view, generate and pay their bills. Data is stored in PostgreSQL (Supabase), behind a small backend API.
 
+## Quick start
+
+```
+python run.py
+```
+
+This one command checks your setup, builds the app if the code changed, starts the backend (which connects to the Supabase database), and opens the desktop app. Closing the app also stops the server it started.
+
+| Command | What it does |
+|---|---|
+| `python run.py` | Build if needed, start the server, open the app |
+| `python run.py --build` | Force a fresh build first |
+| `python run.py --server` | Run only the backend (Ctrl+C to stop) |
+| `python run.py --app` | Open only the app (server already running) |
+| `python run.py --check` | Check Java, `.env`, the build and the database connection, then exit |
+
+Needs Python 3.8+ and JDK 17+. The first time, copy `.env.example` to `.env` and fill it in (see Setup below).
+
 ## Features
 
 | Admin | Customer |
@@ -43,7 +61,7 @@ A Java Swing desktop app for an electricity provider, built as a second-year uni
 │   ├── model/        Customer, Bill, Meter, TaxRates, UserAccount, enums     (shared)
 │   └── common/       Api request/response records, Json, Config, Validation  (shared)
 ├── lib/              FlatLaf + Inter font (UI), Gson (JSON), PostgreSQL JDBC driver
-├── database/         schema.sql (new database), migration-v2.sql (upgrade)
+├── database/         schema.sql (new database), migration-v2.sql + migration-v3-payments.sql (upgrades)
 ├── scripts/          build-release.ps1
 ├── release/          client/ and server/, each a ready-to-run JAR with its lib/
 ├── docs/             ISSUES-CHECKLIST.md
@@ -81,7 +99,8 @@ The interface uses a custom design system called **Midnight Grid**, built on [Fl
 
 1. **Database.** In the Supabase SQL Editor, run:
    - [`database/schema.sql`](database/schema.sql) for a new database, or
-   - [`database/migration-v2.sql`](database/migration-v2.sql) to upgrade a database made with the original schema.
+   - [`database/migration-v2.sql`](database/migration-v2.sql) to upgrade a database made with the original schema, then
+   - [`database/migration-v3-payments.sql`](database/migration-v3-payments.sql) to add online payments.
 2. **Settings.** Copy [`.env.example`](.env.example) to `.env` and fill it in. The server needs the `SUPABASE_*` values; the app only needs `EBS_API_URL`.
 3. **Start the server**, and leave it running:
    ```
@@ -109,11 +128,22 @@ By default the server only accepts connections from the same computer. To let ot
 
 ## Payment flow
 
-Customer clicks **Pay Now** (opens Paytm) → clicks **I've Paid** → bill becomes *Pending Verification* → admin confirms it in **Deposit Details** → *Paid*.
+Bills are paid online through **[SSLCommerz](https://developer.sslcommerz.com/doc/v4/)**, Bangladesh's payment gateway (cards, mobile banking and more):
+
+1. On **Pay bill**, the customer picks a bill and clicks **Pay with SSLCommerz**. The server records the payment, taking the amount from the bill (never from the app), and asks SSLCommerz for a secure checkout page, which opens in the browser.
+2. After paying, SSLCommerz sends the browser back to the server. The server doesn't trust that redirect: it asks SSLCommerz directly, server to server, whether the transaction is valid, and checks that the transaction ID, amount and currency match its own record.
+3. Only then is the bill marked **Paid**, automatically. The app is watching and shows the result straight away. Payments SSLCommerz flags as risky go to *Pending review* for an admin.
+
+Cash or other payments: the customer can report them, and an admin confirms them in **Bills & payments**.
+
+**Trying it for free (sandbox):** set the `SSLCOMMERZ_*` values in `.env` (see `.env.example`). The public test store `testbox` / `qwerty` works for learning, or [register your own sandbox store](https://developer.sslcommerz.com/registration/). On the sandbox checkout page, use test card **4111 1111 1111 1111**, expiry **12/26**, CVV **111**, OTP **111111**. No real money moves.
 
 ## Troubleshooting
 
 - **"Can't reach the server"**: start the server first, and check `EBS_API_URL` in the app's `.env`.
+- **Server says it can't connect to the database:** it prints the reason and a fix at start-up. Two common causes:
+  - Using Supabase's direct address (`db.<project>.supabase.co`). It only works over IPv6, so use the **Session pooler** connection string instead.
+  - Leftover `SUPABASE_DB_*` environment variables in Windows. These override `.env`; the start-up log shows where each setting came from.
 - **"Missing SUPABASE_DB_URL"** (server): the server couldn't find `.env`. Run it from `release/server` or the project folder, or set the variables directly.
 - **"Your session has expired"**: sessions last 8 hours and end when the server restarts. Log out and log in again.
 - **"Too many failed logins"**: wait 15 minutes, or restart the server.

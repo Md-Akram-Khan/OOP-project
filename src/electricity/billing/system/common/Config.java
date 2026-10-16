@@ -26,6 +26,15 @@ public final class Config {
         return value == null || value.isBlank() ? defaultValue : value;
     }
 
+    /** Where a setting's value comes from, for start-up diagnostics. */
+    public static String source(String name) {
+        String env = System.getenv(name);
+        if (env != null && !env.isBlank()) {
+            return "environment variable";
+        }
+        return dotenv().containsKey(name) ? ".env file" : "not set";
+    }
+
     public static String require(String name) {
         String value = get(name, null);
         if (value == null) {
