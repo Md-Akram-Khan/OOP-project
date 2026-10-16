@@ -1,12 +1,14 @@
 package electricity.billing.system.ui.pages.admin;
 
 import electricity.billing.system.ui.components.CenterLayout;
+import electricity.billing.system.common.Dates;
 import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatus;
 import electricity.billing.system.model.Customer;
 import electricity.billing.system.model.Months;
 import electricity.billing.system.ui.AppContext;
 import electricity.billing.system.ui.Page;
+import electricity.billing.system.ui.components.Badge;
 import electricity.billing.system.ui.components.Btn;
 import electricity.billing.system.ui.components.Card;
 import electricity.billing.system.ui.components.DataTable;
@@ -25,6 +27,7 @@ import java.awt.CardLayout;
 import java.awt.Dimension;
 import java.awt.print.PrinterException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.Year;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,11 +42,11 @@ public class BillsPage extends Page {
 
     private static final String ALL = "All";
 
-    private final DataTable table = new DataTable("Customer", "Meter", "Period", "Units", "Amount", "Status");
+    private final DataTable table = new DataTable("Customer", "Meter", "Period", "Units", "Amount", "Due", "Status");
     private final JComboBox<String> meter = Field.combo();
     private final JComboBox<String> month = Field.combo();
     private final JComboBox<String> year = Field.combo();
-    private final Segmented status = new Segmented("All", "Unpaid", "In review", "Paid");
+    private final Segmented status = new Segmented("All", "Unpaid", "Overdue", "In review", "Paid");
     private final Txt summary = Txt.muted(" ");
     private final Btn confirm = new Btn("Confirm payment", Glyph.CHECK, Btn.Style.SUCCESS);
     private final CardLayout states = new CardLayout();
@@ -87,7 +90,7 @@ public class BillsPage extends Page {
             box.setPreferredSize(new Dimension(150, Field.INPUT_HEIGHT));
         }
         status.onChange(i -> applyFilters());
-        Ui.width(status, 400);
+        Ui.width(status, 470);
         JPanel filters = Ui.hbox(14, label("Meter", meter), label("Month", month), label("Year", year), Ui.glue(),
                 Ui.vbox(6, Txt.caps("Status"), status));
 
@@ -95,8 +98,9 @@ public class BillsPage extends Page {
         table.getColumnModel().getColumn(1).setPreferredWidth(90);
         table.getColumnModel().getColumn(2).setPreferredWidth(150);
         table.getColumnModel().getColumn(3).setPreferredWidth(70);
-        table.column(4, new DataTable.MoneyRenderer(), 140);
-        table.column(5, new DataTable.StatusRenderer(), 170);
+        table.column(4, new DataTable.MoneyRenderer(), 130);
+        table.getColumnModel().getColumn(5).setPreferredWidth(120);
+        table.column(6, new DataTable.StatusRenderer(), 160);
         table.getSelectionModel().addListSelectionListener(e -> {
             Bill bill = selectedBill();
             confirm.setEnabled(bill != null && bill.status() != BillStatus.PAID);
@@ -151,10 +155,12 @@ public class BillsPage extends Page {
         String m = (String) meter.getSelectedItem();
         String mo = (String) month.getSelectedItem();
         String y = (String) year.getSelectedItem();
-        BillStatus s = switch (status.selectedIndex()) {
-            case 1 -> BillStatus.NOT_PAID;
-            case 2 -> BillStatus.PENDING;
-            case 3 -> BillStatus.PAID;
+        LocalDate today = Dates.today();
+        int filter = status.selectedIndex();
+        BillStatus s = switch (filter) {
+            case 1, 2 -> BillStatus.NOT_PAID;
+            case 3 -> BillStatus.PENDING;
+            case 4 -> BillStatus.PAID;
             default -> null;
         };
         shown = all.stream()
@@ -162,16 +168,18 @@ public class BillsPage extends Page {
                 .filter(b -> mo == null || ALL.equals(mo) || b.month().equals(mo))
                 .filter(b -> y == null || ALL.equals(y) || String.valueOf(b.year()).equals(y))
                 .filter(b -> s == null || b.status() == s)
+                .filter(b -> filter != 2 || b.isOverdue(today))
                 .collect(Collectors.toCollection(ArrayList::new));
         table.clear();
         for (Bill b : shown) {
             table.addRow(names.getOrDefault(b.meterNo(), "Unknown"), b.meterNo(), Fmt.period(b.month(), b.year()),
-                    Fmt.number(b.units()), b.total(), b.status());
+                    Fmt.number(b.units()), b.amountDue(today), Fmt.date(b.dueDate()), Badge.Label.of(b, today));
         }
-        BigDecimal sum = shown.stream().map(Bill::total).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal sum = shown.stream().map(b -> b.amountDue(today)).reduce(BigDecimal.ZERO, BigDecimal::add);
         long review = shown.stream().filter(b -> b.status() == BillStatus.PENDING).count();
+        long overdue = shown.stream().filter(b -> b.isOverdue(today)).count();
         summary.setText(shown.size() + (shown.size() == 1 ? " bill" : " bills") + "  ·  " + Fmt.money(sum)
-                + " total  ·  " + review + " awaiting confirmation");
+                + " total  ·  " + overdue + " overdue  ·  " + review + " awaiting confirmation");
         states.show(content, shown.isEmpty() ? "empty" : "table");
         confirm.setEnabled(false);
     }
@@ -188,7 +196,8 @@ public class BillsPage extends Page {
         }
         String who = names.getOrDefault(bill.meterNo(), bill.meterNo());
         int answer = JOptionPane.showConfirmDialog(this,
-                "Mark " + who + "'s " + Fmt.period(bill.month(), bill.year()) + " bill (" + Fmt.money(bill.total()) + ") as paid?",
+                "Mark " + who + "'s " + Fmt.period(bill.month(), bill.year()) + " bill (" + Fmt.money(bill.amountDue(Dates.today()))
+                        + ") as paid?",
                 "Confirm payment", JOptionPane.YES_NO_OPTION);
         if (answer != JOptionPane.YES_OPTION) {
             return;

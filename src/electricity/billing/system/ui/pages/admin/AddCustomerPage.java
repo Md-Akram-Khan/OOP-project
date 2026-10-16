@@ -26,6 +26,7 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
+import java.math.BigDecimal;
 import java.util.List;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
@@ -50,7 +51,9 @@ public class AddCustomerPage extends Page {
 
     private final List<ChoiceCard> meterCards;
     private int meterType;
-    private final Segmented tariff = new Segmented("Normal", "Industrial");
+    private final Segmented tariff = new Segmented(BillType.NORMAL.displayName(), BillType.INDUSTRIAL.displayName());
+    private final Txt tariffNote = Txt.small(BillType.NORMAL.description()).wrap(560);
+    private final Field load = Field.text("Sanctioned load (kW)", "e.g. 2", Glyph.BOLT);
     private final Btn createBtn = new Btn("Create customer", Glyph.CHECK, Btn.Style.PRIMARY);
 
     private final SuccessCheck check = new SuccessCheck();
@@ -89,12 +92,16 @@ public class AddCustomerPage extends Page {
         Btn back = new Btn("Back", Glyph.ARROW_LEFT, Btn.Style.GHOST);
         back.addActionListener(e -> showStep(0));
         createBtn.addActionListener(e -> createCustomer());
-        Ui.width(tariff, 320);
+        Ui.width(tariff, 420);
+        tariff.onChange(i -> tariffNote.setText((i == 0 ? BillType.NORMAL : BillType.INDUSTRIAL).description()));
+        load.setValue(Meter.DEFAULT_LOAD_KW.stripTrailingZeros().toPlainString());
         meter = Ui.vbox(18,
-                Ui.vbox(4, Txt.h2("Meter set-up"), Txt.small("Choose the meter and the tariff it's billed on.")),
+                Ui.vbox(4, Txt.h2("Meter set-up"), Txt.small("Choose the meter and the customer category it's billed under.")),
                 Txt.caps("Meter type"), meterRow,
-                Txt.caps("Tariff"), tariff,
-                Txt.small("Industrial meters are billed at a higher rate per unit. Bills cover 30 days."),
+                Txt.caps("Customer category"), tariff, tariffNote,
+                Ui.width(load, 260),
+                Txt.small("The demand charge is the sanctioned load × the tariff's rate per kW. A typical home is 1–3 kW. "
+                        + "Bills cover 30 days and are due 15 days after the meter is read.").wrap(560),
                 Ui.hbox(10, back, Ui.glue(), createBtn));
 
         // Step 3: done
@@ -161,10 +168,21 @@ public class AddCustomerPage extends Page {
         Customer customer = draft();
         String type = Meter.TYPES.get(meterType);
         BillType billType = tariff.selectedIndex() == 0 ? BillType.NORMAL : BillType.INDUSTRIAL;
+        BigDecimal loadKw;
+        try {
+            loadKw = new BigDecimal(load.value());
+            if (loadKw.signum() <= 0 || loadKw.compareTo(Meter.MAX_LOAD_KW) > 0) {
+                throw new NumberFormatException();
+            }
+            load.setError(null);
+        } catch (NumberFormatException e) {
+            load.setError("Enter the load in kW, e.g. 2 or 2.5.");
+            return;
+        }
         createBtn.setBusy(true, "Creating…");
         Tasks.run(() -> {
             Customer saved = app.customers.create(customer);
-            app.customers.saveMeter(new Meter(saved.meterNo(), type, billType, Meter.DEFAULT_BILLING_DAYS));
+            app.customers.saveMeter(new Meter(saved.meterNo(), type, billType, Meter.DEFAULT_BILLING_DAYS, loadKw));
             return saved;
         }, saved -> {
             createBtn.setBusy(false, null);
@@ -186,6 +204,8 @@ public class AddCustomerPage extends Page {
         }
         pickMeter(0);
         tariff.select(0);
+        load.setValue(Meter.DEFAULT_LOAD_KW.stripTrailingZeros().toPlainString());
+        load.setError(null);
         createdMeter = null;
         detailsError.setVisible(false);
         showStep(0);

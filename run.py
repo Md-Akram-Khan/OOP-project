@@ -120,6 +120,21 @@ def read_dotenv():
     return values
 
 
+def prefer_dotenv(dotenv):
+    """
+    .env is this project's source of truth for the database. A leftover
+    SUPABASE_DB_* environment variable (for example one inherited by an editor
+    that was opened before it was removed) would silently override it, so drop
+    any that conflict with .env before starting the server.
+    """
+    dropped = []
+    for name in DB_SETTINGS:
+        if dotenv.get(name) and os.environ.get(name) and os.environ[name] != dotenv[name]:
+            del os.environ[name]
+            dropped.append(name)
+    return dropped
+
+
 def setting(name, dotenv, default=None):
     """Environment variables override .env, matching the Java Config class."""
     return os.environ.get(name) or dotenv.get(name) or default
@@ -158,7 +173,7 @@ def check_settings(dotenv, for_server):
     missing = [n for n in DB_SETTINGS if not setting(n, dotenv)]
     if missing:
         fail("Missing in .env: " + ", ".join(missing))
-    overridden = [n for n in DB_SETTINGS if os.environ.get(n)]
+    overridden = [n for n in DB_SETTINGS if os.environ.get(n) and os.environ.get(n) != dotenv.get(n)]
     if overridden:
         warn("These environment variables override .env: " + ", ".join(overridden))
         warn("If the database can't be reached, remove them (or close and reopen your terminal).")
@@ -313,11 +328,15 @@ def main():
         sys.stdout.reconfigure(line_buffering=True)
     print(paint(f"\n  {BOLT}Electricity Billing System\n", "36;1"))
     dotenv = read_dotenv()
+    ignored = prefer_dotenv(dotenv)
     port = int(setting("EBS_SERVER_PORT", dotenv, "8080"))
     base_url = setting("EBS_API_URL", dotenv) if args.app else f"http://localhost:{port}"
     base_url = (base_url or f"http://localhost:{port}").rstrip("/")
 
     step("Checking your setup")
+    if ignored:
+        warn("Ignoring old environment variables that disagree with .env: " + ", ".join(ignored))
+        warn("Using the .env settings instead. (Restart VS Code or your terminal to clear them for good.)")
     rebuild = args.build or needs_build()
     check_java(need_compiler=rebuild)
     check_settings(dotenv, for_server=not args.app)

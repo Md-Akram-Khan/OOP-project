@@ -187,6 +187,8 @@ public class DataTable extends JTable {
                 boolean focused, int row, int column) {
             if (value instanceof BillStatus status) {
                 badge.set(status);
+            } else if (value instanceof Badge.Label label) {
+                badge.set(label);
             }
             return panel;
         }

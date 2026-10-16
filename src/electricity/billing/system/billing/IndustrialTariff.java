@@ -1,15 +1,21 @@
 package electricity.billing.system.billing;
 
-import electricity.billing.system.model.TaxRates;
-import java.math.BigDecimal;
+import electricity.billing.system.model.BillBreakdown;
+import electricity.billing.system.model.TariffPlan;
+import java.util.List;
 
-/** Industrial tariff: the per-unit price is scaled by the multiplier in the tax table. */
+/**
+ * Commercial and industrial tariff: every unit at one flat rate (the plan's
+ * first slab). Larger connections in Bangladesh are billed by flat or
+ * time-of-day rates rather than household slabs.
+ */
 public class IndustrialTariff implements Tariff {
 
     @Override
-    public BigDecimal energyCharge(int units, TaxRates rates) {
-        return rates.costPerUnit()
-                .multiply(rates.industrialMultiplier())
-                .multiply(BigDecimal.valueOf(units));
+    public List<BillBreakdown.Line> energyLines(int units, TariffPlan plan) {
+        if (units <= 0) {
+            return List.of();
+        }
+        return List.of(Tariff.line("All units (flat rate)", units, plan.slabs().get(0).rate()));
     }
 }

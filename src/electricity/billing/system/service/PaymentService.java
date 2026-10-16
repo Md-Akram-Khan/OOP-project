@@ -3,14 +3,19 @@ package electricity.billing.system.service;
 import electricity.billing.system.common.Api;
 import electricity.billing.system.common.AppException;
 import electricity.billing.system.common.Config;
+import electricity.billing.system.common.Dates;
+import electricity.billing.system.common.Money;
+import electricity.billing.system.db.AuditDao;
 import electricity.billing.system.db.BillDao;
 import electricity.billing.system.db.CustomerDao;
 import electricity.billing.system.db.Database;
+import electricity.billing.system.db.NotificationDao;
 import electricity.billing.system.db.PaymentDao;
 import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatus;
 import electricity.billing.system.model.Customer;
 import electricity.billing.system.model.Months;
+import electricity.billing.system.model.Notification;
 import electricity.billing.system.model.Payment;
 import electricity.billing.system.service.SslCommerzGateway.Validation;
 import java.io.IOException;
@@ -77,7 +82,8 @@ public class PaymentService {
             if (bill.status() == BillStatus.PENDING) {
                 throw new AppException("A payment for this bill is already waiting for confirmation.");
             }
-            BigDecimal amount = bill.total().setScale(2, RoundingMode.HALF_UP);
+            // Past the due date the late fee is included, exactly as the bill says.
+            BigDecimal amount = bill.amountDue(Dates.today()).setScale(2, RoundingMode.HALF_UP);
             if (amount.compareTo(MINIMUM) < 0) {
                 throw new AppException("Online payments must be at least " + MINIMUM + " " + currency() + ".");
             }
@@ -132,6 +138,13 @@ public class PaymentService {
             new BillDao(c).updateStatus(locked.meterNo(), locked.month(), locked.year(),
                     risky ? BillStatus.PENDING : BillStatus.PAID, BillStatus.NOT_PAID, BillStatus.PENDING);
             LOG.info("Payment " + tranId + " confirmed by SSLCommerz" + (risky ? " (flagged risky, sent for review)" : ""));
+            String period = locked.month() + " " + locked.year();
+            new NotificationDao(c).insert(locked.meterNo(), Notification.Kind.PAYMENT,
+                    risky ? "Payment received, being checked" : "Payment received for " + period,
+                    Money.tk(locked.amount()) + " paid online" + (proof.cardType() == null ? "" : " with " + proof.cardType())
+                            + (risky ? ". SSLCommerz asked for a quick check, so an admin will confirm it shortly." : ". Thank you!"));
+            new AuditDao(c).insert("SSLCommerz", "PAYMENT_ONLINE", locked.meterNo() + " " + period,
+                    Money.tk(locked.amount()) + ", transaction " + tranId + (risky ? ", flagged risky: sent for review" : ""));
             return Payment.Status.PAID;
         });
     }

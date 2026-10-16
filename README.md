@@ -22,13 +22,19 @@ Needs Python 3.8+ and JDK 17+. The first time, copy `.env.example` to `.env` and
 
 ## Features
 
+Bills follow Bangladeshi rules: the **BERC slab tariff** (with the 0–50 unit lifeline rate), a demand charge on the sanctioned load, 5% VAT, meter rent, a due date and a 5% late fee. A real September 2026 Magura Palli Bidyut bill (235 units, Tk 1,963 / Tk 2,056 after the due date) is used as the test case.
+
 | Admin | Customer |
 |---|---|
-| Add customers (unique meter number generated automatically) | Sign up with meter number + registered email |
-| Set up each meter's type and tariff | View and update their profile |
-| Calculate monthly bills | View bill history |
-| Search all bills and confirm payments | Generate a printable bill for any month |
-| Add other admins | Pay online, then report the payment for confirmation |
+| Add customers: category (residential or commercial) and sanctioned load | Sign up with meter number + registered email |
+| Enter meter readings; bills are priced live, slab by slab | Home page with due date, overdue and high-usage alerts |
+| **Bill checker** flags suspicious bills before they're saved | Bill history and a printable Bangladeshi-style invoice |
+| Bills with due dates, overdue filter and payment confirmation | **"Why is this bill different?"** explanation |
+| Complaints: reply, set status, customer is notified | **Usage planner**: forecast from today's reading, slab alert, appliance calculator |
+| Reports: collection rate, arrears by age, top defaulters, CSV export | Pay online with SSLCommerz (bKash, Nagad, Rocket, cards); late fee added once overdue |
+| Tariffs page and an **activity (audit) log** | Notifications (new bill, payment, reminders) and complaints with ticket numbers |
+
+See [docs/FEATURES-CHECKLIST.md](docs/FEATURES-CHECKLIST.md) for which features from the research were integrated and which weren't.
 
 ## Architecture
 
@@ -54,17 +60,18 @@ Needs Python 3.8+ and JDK 17+. The first time, copy `.env.example` to `.env` and
 │   │   └── pages/        admin/ and customer/ screens
 │   ├── client/       ApiClient + AuthClient, CustomerClient, BillingClient   (app)
 │   ├── server/       ApiServer, Router, Endpoints, SessionStore, LoginThrottle (server)
-│   ├── service/      AuthService, CustomerService, BillingService            (server)
+│   ├── service/      Auth, Customer, Billing, Payment, Complaint, Notification, Audit services (server)
 │   ├── db/           Database + one DAO per table, PreparedStatement only   (server)
 │   ├── security/     PasswordHasher, salted PBKDF2                           (server)
-│   ├── billing/      Tariff interface ← NormalTariff, IndustrialTariff       (server)
-│   ├── model/        Customer, Bill, Meter, TaxRates, UserAccount, enums     (shared)
+│   ├── billing/      Tariff ← NormalTariff (slabs) / IndustrialTariff (flat); BillCalculator,
+│   │                 BillChecker, BillExplainer, SlabGuard                    (server)
+│   ├── model/        Customer, Bill, Meter, TariffPlan, Complaint, ... records (shared)
 │   └── common/       Api request/response records, Json, Config, Validation  (shared)
 ├── lib/              FlatLaf + Inter font (UI), Gson (JSON), PostgreSQL JDBC driver
-├── database/         schema.sql (new database), migration-v2.sql + migration-v3-payments.sql (upgrades)
+├── database/         schema.sql (new database), migration-v2/v3/v4 (upgrades, run in order)
 ├── scripts/          build-release.ps1
 ├── release/          client/ and server/, each a ready-to-run JAR with its lib/
-├── docs/             ISSUES-CHECKLIST.md
+├── docs/             ISSUES-CHECKLIST.md, FEATURES-CHECKLIST.md
 └── nbproject/, build.xml, manifest.mf    NetBeans project files
 ```
 
@@ -73,9 +80,18 @@ Needs Python 3.8+ and JDK 17+. The first time, copy `.env.example` to `.env` and
 - **Encapsulation:** immutable records for domain data; pages never touch SQL or HTTP directly.
 - **Abstraction and layering:** windows → API clients → HTTP → endpoints → services (business rules) → DAOs (SQL) → database.
 - **Inheritance:** every screen extends `Page`; reusable widgets such as `StatCard` extend `Card`.
-- **Polymorphism:** `Tariff.forBillType(...)` returns the pricing strategy for a meter; adding a new tariff means adding one class.
+- **Polymorphism:** `Tariff.forBillType(...)` returns the pricing strategy for a customer category (telescopic slabs for homes, one flat rate for commercial); adding a new category means adding one class.
 
-**Bill formula:** units × cost per unit (× industrial multiplier for Industrial meters) + meter rent + service charge + service tax + fixed tax.
+**Bill formula** (as on a Bangladeshi bill):
+
+1. Units = current reading − previous reading.
+2. Energy charge, slab by slab (0–75 at Tk 5.26, 76–200 at Tk 8.50, …; 50 units or fewer in a month: all at the lifeline Tk 4.63).
+3. + Demand charge = sanctioned load (kW) × Tk 42.
+4. + 5% VAT on energy + demand charge.
+5. + Meter rent (Tk 10). Rounded up to whole taka; due 15 days after the bill date.
+6. After the due date: add a 5% late fee on energy + demand charge.
+
+Rates live in the `tariff_plan` / `tariff_slab` tables, not in code. To bring in a new BERC order, add a plan with its effective date.
 
 ## Design
 
@@ -100,7 +116,8 @@ The interface uses a custom design system called **Midnight Grid**, built on [Fl
 1. **Database.** In the Supabase SQL Editor, run:
    - [`database/schema.sql`](database/schema.sql) for a new database, or
    - [`database/migration-v2.sql`](database/migration-v2.sql) to upgrade a database made with the original schema, then
-   - [`database/migration-v3-payments.sql`](database/migration-v3-payments.sql) to add online payments.
+   - [`database/migration-v3-payments.sql`](database/migration-v3-payments.sql) to add online payments, then
+   - [`database/migration-v4-bd-billing.sql`](database/migration-v4-bd-billing.sql) to add BERC tariffs, meter readings, due dates, complaints, notifications and the audit log.
 2. **Settings.** Copy [`.env.example`](.env.example) to `.env` and fill it in. The server needs the `SUPABASE_*` values; the app only needs `EBS_API_URL`.
 3. **Start the server**, and leave it running:
    ```
@@ -130,7 +147,7 @@ By default the server only accepts connections from the same computer. To let ot
 
 Bills are paid online through **[SSLCommerz](https://developer.sslcommerz.com/doc/v4/)**, Bangladesh's payment gateway (cards, mobile banking and more):
 
-1. On **Pay bill**, the customer picks a bill and clicks **Pay with SSLCommerz**. The server records the payment, taking the amount from the bill (never from the app), and asks SSLCommerz for a secure checkout page, which opens in the browser.
+1. On **Pay bill**, the customer picks a bill and clicks **Pay with SSLCommerz**. The server records the payment, taking the amount from the bill (never from the app; after the due date, the amount including the late fee), and asks SSLCommerz for a secure checkout page, which opens in the browser.
 2. After paying, SSLCommerz sends the browser back to the server. The server doesn't trust that redirect: it asks SSLCommerz directly, server to server, whether the transaction is valid, and checks that the transaction ID, amount and currency match its own record.
 3. Only then is the bill marked **Paid**, automatically. The app is watching and shows the result straight away. Payments SSLCommerz flags as risky go to *Pending review* for an admin.
 
@@ -147,6 +164,8 @@ Cash or other payments: the customer can report them, and an admin confirms them
 - **"Missing SUPABASE_DB_URL"** (server): the server couldn't find `.env`. Run it from `release/server` or the project folder, or set the variables directly.
 - **"Your session has expired"**: sessions last 8 hours and end when the server restarts. Log out and log in again.
 - **"Too many failed logins"**: wait 15 minutes, or restart the server.
+- **"No tariff is set up"**: run `database/migration-v4-bd-billing.sql` in the Supabase SQL Editor.
+- **"has no earlier reading on file"**: the meter's first bill needs the previous reading typed in (from the meter or the last paper bill). After that it's filled in automatically.
 
 ## Version 2 changes
 

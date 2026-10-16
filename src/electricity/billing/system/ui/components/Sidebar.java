@@ -115,6 +115,14 @@ public class Sidebar extends JPanel {
         nav.add(Box.createVerticalStrut(2));
     }
 
+    /** Shows a small count pill on a menu item; 0 hides it. */
+    public void setCount(String key, int count) {
+        items.stream().filter(i -> key.equals(i.key)).findFirst().ifPresent(i -> {
+            i.count = Math.max(0, count);
+            i.repaint();
+        });
+    }
+
     public void select(String key) {
         NavItem next = items.stream().filter(i -> key.equals(i.key)).findFirst().orElse(null);
         if (next == null || next == selected) {
@@ -176,6 +184,7 @@ public class Sidebar extends JPanel {
         private final Glyph glyph;
         private double hover;
         private Timer anim;
+        private int count;
 
         NavItem(String key, String label, Glyph glyph, Runnable onClick) {
             this.key = key;
@@ -236,6 +245,19 @@ public class Sidebar extends JPanel {
             FontMetrics fm = g2.getFontMetrics();
             g2.setColor(active ? Color.WHITE : Theme.mix(Theme.INK_TEXT, Color.WHITE, hover * 0.6));
             g2.drawString(label, 46, (getHeight() - fm.getHeight()) / 2 + fm.getAscent());
+            if (count > 0) {
+                String text = count > 99 ? "99+" : String.valueOf(count);
+                g2.setFont(Theme.semibold(11));
+                FontMetrics small = g2.getFontMetrics();
+                int pw = Math.max(20, small.stringWidth(text) + 12);
+                int ph = 20;
+                int px = getWidth() - pw - 10;
+                int py = (getHeight() - ph) / 2;
+                g2.setColor(Theme.AMBER);
+                g2.fill(new RoundRectangle2D.Double(px, py, pw, ph, ph, ph));
+                g2.setColor(Theme.INK_TOP);
+                g2.drawString(text, px + (pw - small.stringWidth(text)) / 2, py + (ph - small.getHeight()) / 2 + small.getAscent());
+            }
             g2.dispose();
         }
     }

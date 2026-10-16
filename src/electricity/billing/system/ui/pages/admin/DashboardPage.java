@@ -1,12 +1,15 @@
 package electricity.billing.system.ui.pages.admin;
 
+import electricity.billing.system.common.Dates;
 import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatus;
+import electricity.billing.system.model.Complaint;
 import electricity.billing.system.model.Customer;
 import electricity.billing.system.ui.AppContext;
 import electricity.billing.system.ui.Page;
 import electricity.billing.system.ui.Period;
 import electricity.billing.system.ui.components.Avatar;
+import electricity.billing.system.ui.components.Badge;
 import electricity.billing.system.ui.components.BarChart;
 import electricity.billing.system.ui.components.Btn;
 import electricity.billing.system.ui.components.Card;
@@ -24,6 +27,7 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import electricity.billing.system.ui.components.CenterLayout;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -34,7 +38,7 @@ import javax.swing.JScrollPane;
 /** The admin's overview: key numbers, billing trend, payments to confirm and the latest bills. */
 public class DashboardPage extends Page {
 
-    private record Data(List<Customer> customers, List<Bill> bills) {
+    private record Data(List<Customer> customers, List<Bill> bills, List<Complaint> complaints) {
     }
 
     private final StatCard customersCard = new StatCard("Customers", Glyph.USERS, Theme.BLUE, Fmt::number);
@@ -65,7 +69,7 @@ public class DashboardPage extends Page {
         chartCard.add(chart, BorderLayout.CENTER);
 
         Card attentionCard = new Card(new BorderLayout(0, 16));
-        attentionCard.add(Ui.vbox(4, Txt.h2("Needs attention"), Txt.small("Payments customers have reported")), BorderLayout.NORTH);
+        attentionCard.add(Ui.vbox(4, Txt.h2("Needs attention"), Txt.small("Payments to confirm and open complaints")), BorderLayout.NORTH);
         attentionCard.add(attention, BorderLayout.CENTER);
 
         JPanel middle = Ui.clear(new BorderLayout(16, 0));
@@ -95,7 +99,8 @@ public class DashboardPage extends Page {
     @Override
     public void onShow(Object param) {
         greeting.setText(Fmt.greeting() + ", " + Fmt.firstName(app.account().name()));
-        Tasks.run(this, () -> new Data(app.customers.findAll(), app.billing.search(null, null, null)), this::render);
+        Tasks.run(this, () -> new Data(app.customers.findAll(), app.billing.search(null, null, null), app.support.complaints()),
+                this::render);
     }
 
     private void render(Data data) {
@@ -105,14 +110,16 @@ public class DashboardPage extends Page {
         List<Bill> bills = data.bills();
 
         long thisMonth = bills.stream().filter(b -> now.matches(b.month(), b.year())).count();
+        LocalDate today = Dates.today();
         double outstanding = bills.stream().filter(b -> b.status() != BillStatus.PAID)
-                .map(Bill::total).reduce(BigDecimal.ZERO, BigDecimal::add).doubleValue();
+                .map(b -> b.amountDue(today)).reduce(BigDecimal.ZERO, BigDecimal::add).doubleValue();
+        long overdue = bills.stream().filter(b -> b.isOverdue(today)).count();
         List<Bill> pending = bills.stream().filter(b -> b.status() == BillStatus.PENDING).toList();
         long unpaid = bills.stream().filter(b -> b.status() == BillStatus.NOT_PAID).count();
 
         customersCard.setValue(data.customers().size(), data.customers().isEmpty() ? "Add your first customer" : "Connected meters");
         billsCard.setValue(thisMonth, now.toString());
-        outstandingCard.setValue(outstanding, unpaid + " unpaid · " + pending.size() + " in review");
+        outstandingCard.setValue(outstanding, unpaid + " unpaid · " + overdue + " overdue");
         pendingCard.setValue(pending.size(), pending.isEmpty() ? "All caught up" : "Confirm in Bills & payments");
 
         Function<Period, Double> totalFor = p -> bills.stream().filter(b -> p.matches(b.month(), b.year()))
@@ -120,19 +127,20 @@ public class DashboardPage extends Page {
         chart.setData(Period.lastMonths(6).stream()
                 .map(p -> new BarChart.Bar(Fmt.shortMonth(p.month()), totalFor.apply(p))).toList());
 
-        renderAttention(pending, names);
+        List<Complaint> open = data.complaints().stream().filter(c -> c.status() != Complaint.Status.RESOLVED).toList();
+        renderAttention(pending, open, names);
 
         recent.clear();
         bills.stream().limit(6).forEach(b -> recent.addRow(names.getOrDefault(b.meterNo(), b.meterNo()),
-                Fmt.period(b.month(), b.year()), b.total(), b.status()));
+                Fmt.period(b.month(), b.year()), b.amountDue(today), Badge.Label.of(b, today)));
     }
 
-    private void renderAttention(List<Bill> pending, Map<String, String> names) {
+    private void renderAttention(List<Bill> pending, List<Complaint> complaints, Map<String, String> names) {
         attention.removeAll();
-        if (pending.isEmpty()) {
+        if (pending.isEmpty() && complaints.isEmpty()) {
             JPanel done = Ui.clear(new CenterLayout());
             JPanel stack = Ui.vbox(10, new IconTile(Glyph.CHECK_CIRCLE, 52, Theme.SUCCESS), Txt.h3("All caught up"),
-                    Txt.small("No payments are waiting for confirmation."));
+                    Txt.small("No payments to confirm and no open complaints."));
             stack.getComponents();
             for (java.awt.Component c : stack.getComponents()) {
                 if (c instanceof javax.swing.JComponent j) {
@@ -166,6 +174,18 @@ public class DashboardPage extends Page {
             }
             if (pending.size() > 4) {
                 list.add(Ui.left(Txt.small("+ " + (pending.size() - 4) + " more in Bills & payments")));
+                list.add(javax.swing.Box.createVerticalStrut(12));
+            }
+            if (!complaints.isEmpty()) {
+                Btn view = new Btn("View", Glyph.ARROW_RIGHT, Btn.Style.SECONDARY).trailingIcon();
+                view.addActionListener(e -> app.go("complaints"));
+                long fresh = complaints.stream().filter(c -> c.status() == Complaint.Status.OPEN).count();
+                JPanel row = Ui.clear(new BorderLayout(12, 0));
+                row.add(new IconTile(Glyph.MAIL, 36, Theme.DANGER), BorderLayout.WEST);
+                row.add(Ui.vbox(2, Txt.h3(complaints.size() + (complaints.size() == 1 ? " open complaint" : " open complaints")),
+                        Txt.small(fresh + " not answered yet")), BorderLayout.CENTER);
+                row.add(view, BorderLayout.EAST);
+                list.add(Ui.left(row));
             }
             attention.add(list, BorderLayout.NORTH);
         }

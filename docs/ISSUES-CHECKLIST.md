@@ -4,7 +4,7 @@ Status of every issue found in the project review, plus a few more found while f
 
 **Key:** ✅ Solved · ⚠️ Solved in code, needs an action from you · ❌ Not solved (reason given)
 
-**Summary:** 33 solved · 1 needs your action · 2 not solved (36 issues)
+**Summary:** 35 solved · 1 needs your action · 0 not solved (36 issues)
 
 ---
 
@@ -36,9 +36,9 @@ Status of every issue found in the project review, plus a few more found while f
 | 17 | Pay Bill kept showing the previous month's figures | ✅ | Clears immediately, shows "No bill for this month", ignores stale results. |
 | 18 | Calculate Bill didn't show the first customer's name and address | ✅ | Loads them as soon as the meter list arrives. |
 | 19 | "Industial" typo | ✅ | Fixed in the UI. The migration fixes existing rows, and old values are still read correctly. |
-| 20 | Bill type didn't affect the price | ✅ | `Tariff` interface with `NormalTariff` and `IndustrialTariff`. Industrial = cost per unit × `industrial_multiplier`. The **1.5 default is my assumption**; change it in the `tax` table. |
-| 21 | Meter type (Electric / Solar / Smart) doesn't affect the price | ❌ | Left as information only. Pricing solar or smart meters differently is a business rule I'd be inventing. Easy to add as another `Tariff` once you decide the rule. |
-| 22 | `service_tax` is added as a flat amount, not a percentage | ❌ | **Your decision.** Treating the stored 57 as 57% would be wrong, so it stays a flat Tk 57 and is labelled as such. Switching to a percentage needs a new rate value. |
+| 20 | Bill type didn't affect the price | ✅ | Now based on Bangladeshi customer categories: *Residential* uses the BERC slab tariff (`NormalTariff`), *Commercial & industrial* one flat rate (`IndustrialTariff`). Rates come from the `tariff_plan` tables; the old 1.5× multiplier is gone. |
+| 21 | Meter type (Electric / Solar / Smart) doesn't affect the price | ✅ | Resolved by following Bangladeshi practice: price depends on the customer category and sanctioned load, not the meter hardware. Meter type stays as information. (Net metering for solar is listed as not integrated in FEATURES-CHECKLIST.md.) |
+| 22 | `service_tax` is added as a flat amount, not a percentage | ✅ | Replaced by Bangladesh's **5% VAT** on energy + demand charge, as on real bills. The old `tax` table is no longer used. |
 | 23 | Font name "Senserif" typo | ✅ | Generate Bill now uses a monospaced font so the columns line up. |
 | 24 | Notepad and Calculator buttons only worked on Windows | ✅ | Removed. They only opened the operating system's own apps and weren't connected to billing; the live bill preview covers the calculator's job. |
 | 25 | *(Found during fixes)* Splash screen changed windows from a background thread | ✅ | Uses a Swing `Timer`. |

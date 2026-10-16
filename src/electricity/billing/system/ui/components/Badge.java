@@ -1,6 +1,8 @@
 package electricity.billing.system.ui.components;
 
+import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatus;
+import electricity.billing.system.model.Complaint;
 import electricity.billing.system.ui.theme.Theme;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -10,10 +12,47 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
+import java.time.LocalDate;
 import javax.swing.JComponent;
 
 /** A coloured status pill with a dot, e.g. "● Paid". */
 public class Badge extends JComponent {
+
+    /** A badge's text and colour, for table cells. Sorts by its text. */
+    public record Label(String text, Color color) implements Comparable<Label> {
+        public static Label of(Bill bill, LocalDate today) {
+            if (bill.isOverdue(today)) {
+                return new Label("Overdue", Theme.DANGER);
+            }
+            return of(bill.status());
+        }
+
+        public static Label of(BillStatus status) {
+            return switch (status) {
+                case PAID -> new Label("Paid", Theme.SUCCESS);
+                case PENDING -> new Label("Pending review", Theme.WARNING);
+                case NOT_PAID -> new Label("Unpaid", Theme.AMBER);
+            };
+        }
+
+        public static Label of(Complaint.Status status) {
+            return switch (status) {
+                case OPEN -> new Label("Open", Theme.DANGER);
+                case IN_PROGRESS -> new Label("In progress", Theme.WARNING);
+                case RESOLVED -> new Label("Resolved", Theme.SUCCESS);
+            };
+        }
+
+        @Override
+        public int compareTo(Label other) {
+            return text.compareTo(other.text);
+        }
+
+        @Override
+        public String toString() {
+            return text;
+        }
+    }
 
     private String text;
     private Color color;
@@ -31,6 +70,12 @@ public class Badge extends JComponent {
         return this;
     }
 
+    public static Badge of(Bill bill, LocalDate today) {
+        Badge badge = new Badge("", Theme.SUCCESS);
+        badge.set(bill, today);
+        return badge;
+    }
+
     public static Badge of(BillStatus status) {
         Badge badge = new Badge("", Theme.SUCCESS);
         badge.set(status);
@@ -38,12 +83,16 @@ public class Badge extends JComponent {
     }
 
     public void set(BillStatus status) {
-        switch (status) {
-            case PAID -> set("Paid", Theme.SUCCESS);
-            case PENDING -> set("Pending review", Theme.WARNING);
-            case NOT_PAID -> set("Unpaid", Theme.DANGER);
-            default -> set(status.label(), Theme.BLUE);
-        }
+        set(Label.of(status));
+    }
+
+    /** Shows "Overdue" for an unpaid bill past its due date. */
+    public void set(Bill bill, LocalDate today) {
+        set(Label.of(bill, today));
+    }
+
+    public void set(Label label) {
+        set(label.text(), label.color());
     }
 
     public void set(String newText, Color newColor) {

@@ -22,7 +22,8 @@ public final class Database {
     private static final String UNIQUE_VIOLATION = "23505";
 
     static {
-        DriverManager.setLoginTimeout(15);
+        // Two attempts (see open) must fit inside the app's 20-second request timeout.
+        DriverManager.setLoginTimeout(8);
     }
 
     private Database() {
@@ -86,7 +87,23 @@ public final class Database {
         return UNIQUE_VIOLATION.equals(e.getSQLState());
     }
 
+    /**
+     * Supabase's connection pooler occasionally stalls a new connection during
+     * the TLS handshake. One quick retry turns that into a short delay instead
+     * of an error for the user.
+     */
     private static Connection open() throws SQLException {
+        try {
+            return connect();
+        } catch (SQLException e) {
+            if (!isConnectionFailure(e)) {
+                throw e;
+            }
+            return connect();
+        }
+    }
+
+    private static Connection connect() throws SQLException {
         return DriverManager.getConnection(
                 Config.require("SUPABASE_DB_URL"),
                 Config.require("SUPABASE_DB_USER"),

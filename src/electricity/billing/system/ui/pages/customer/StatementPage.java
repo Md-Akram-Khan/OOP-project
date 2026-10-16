@@ -1,20 +1,27 @@
 package electricity.billing.system.ui.pages.customer;
 
+import electricity.billing.system.model.BillExplanation;
 import electricity.billing.system.model.Months;
 import electricity.billing.system.ui.AppContext;
 import electricity.billing.system.ui.Page;
 import electricity.billing.system.ui.Period;
 import electricity.billing.system.ui.components.Btn;
+import electricity.billing.system.ui.components.Card;
+import electricity.billing.system.ui.components.IconTile;
+import electricity.billing.system.ui.components.Txt;
 import electricity.billing.system.ui.components.Field;
 import electricity.billing.system.ui.components.InvoiceView;
 import electricity.billing.system.ui.components.Tasks;
 import electricity.billing.system.ui.components.Toast;
 import electricity.billing.system.ui.components.Ui;
+import electricity.billing.system.ui.theme.Fmt;
 import electricity.billing.system.ui.theme.Icons.Glyph;
+import electricity.billing.system.ui.theme.Theme;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.print.PrinterException;
+import java.math.BigDecimal;
 import java.time.Year;
 import javax.swing.JComboBox;
 import javax.swing.JPanel;
@@ -25,6 +32,7 @@ public class StatementPage extends Page {
     private final JComboBox<String> month = Field.combo();
     private final JComboBox<Integer> year = Field.combo();
     private final InvoiceView invoice = new InvoiceView();
+    private final Card why = new Card(new BorderLayout(0, 14)).pad(24, 26, 24, 26);
     private boolean loading;
 
     public StatementPage(AppContext app) {
@@ -51,7 +59,10 @@ public class StatementPage extends Page {
 
         JPanel center = Ui.clear(new FlowLayout(FlowLayout.CENTER, 0, 0));
         center.add(invoice);
-        body(center);
+        JPanel whyRow = Ui.clear(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        whyRow.add(Ui.fixedWidth(why, 760));
+        why.setVisible(false);
+        body(Ui.vbox(16, center, whyRow));
     }
 
     @Override
@@ -72,6 +83,40 @@ public class StatementPage extends Page {
         }
         String m = (String) month.getSelectedItem();
         int y = (Integer) year.getSelectedItem();
-        Tasks.run(this, () -> app.billing.myStatement(m, y), statement -> invoice.show(statement, m, y));
+        Tasks.run(this, () -> app.billing.myStatement(m, y), statement -> {
+            invoice.show(statement, m, y);
+            explain(statement.explanation());
+        });
+    }
+
+    /** "Why is this bill different?": the change since the last bill, split into its causes. */
+    private void explain(BillExplanation e) {
+        why.removeAll();
+        if (e == null) {
+            why.setVisible(false);
+            revalidate();
+            return;
+        }
+        BigDecimal diff = e.difference();
+        String change = diff.signum() == 0 ? "the same as" : Fmt.money(diff.abs()) + (diff.signum() > 0 ? " more than" : " less than");
+        why.add(Ui.vbox(4, Ui.hbox(10, new IconTile(Glyph.INFO, 36, Theme.VIOLET), Txt.h2("Why is this bill different?")),
+                Txt.muted("This bill is " + change + " your " + e.comparedWith() + " bill (" + Fmt.money(e.previousTotal()) + ").")),
+                BorderLayout.NORTH);
+        JPanel rows = Ui.vbox(12);
+        for (BillExplanation.Reason r : e.reasons()) {
+            JPanel row = Ui.clear(new BorderLayout(16, 0));
+            row.add(Ui.vbox(3, Txt.h3(r.title()), Txt.small(r.detail()).wrap(560)), BorderLayout.CENTER);
+            if (r.amount() != null) {
+                String sign = r.amount().signum() > 0 ? "+" : r.amount().signum() < 0 ? "−" : "";
+                Txt amount = new Txt(sign + Fmt.money(r.amount().abs()), Theme.semibold(15),
+                        () -> r.amount().signum() > 0 ? Theme.DANGER : r.amount().signum() < 0 ? Theme.SUCCESS : Theme.muted());
+                row.add(Ui.top(amount), BorderLayout.EAST);
+            }
+            rows.add(Ui.left(row));
+        }
+        why.add(rows, BorderLayout.CENTER);
+        why.setVisible(true);
+        revalidate();
+        repaint();
     }
 }

@@ -1,11 +1,13 @@
 package electricity.billing.system.ui.pages.customer;
 
 import electricity.billing.system.ui.components.CenterLayout;
+import electricity.billing.system.common.Dates;
 import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatus;
 import electricity.billing.system.ui.AppContext;
 import electricity.billing.system.ui.Page;
 import electricity.billing.system.ui.Period;
+import electricity.billing.system.ui.components.Badge;
 import electricity.billing.system.ui.components.Btn;
 import electricity.billing.system.ui.components.Card;
 import electricity.billing.system.ui.components.DataTable;
@@ -20,6 +22,7 @@ import java.awt.CardLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.JPanel;
@@ -27,7 +30,7 @@ import javax.swing.JPanel;
 /** The customer's full billing history. Double-click a bill to open its invoice. */
 public class MyBillsPage extends Page {
 
-    private final DataTable table = new DataTable("Period", "Units", "Amount", "Status");
+    private final DataTable table = new DataTable("Period", "Units", "Amount due", "Due date", "Status");
     private final Txt summary = Txt.muted("Your complete billing history.");
     private final Btn open = new Btn("View invoice", Glyph.FILE_TEXT, Btn.Style.SECONDARY);
     private final Btn pay = new Btn("Pay bill", Glyph.CREDIT_CARD, Btn.Style.PRIMARY);
@@ -50,7 +53,8 @@ public class MyBillsPage extends Page {
 
         table.column(0, new DataTable.TextRenderer(javax.swing.SwingConstants.LEFT, true), 220);
         table.column(2, new DataTable.MoneyRenderer(), 160);
-        table.column(3, new DataTable.StatusRenderer(), 180);
+        table.column(3, new DataTable.MutedRenderer(), 140);
+        table.column(4, new DataTable.StatusRenderer(), 170);
         table.getSelectionModel().addListSelectionListener(e -> open.setEnabled(table.getSelectedRow() >= 0));
         table.addMouseListener(new MouseAdapter() {
             @Override
@@ -78,13 +82,17 @@ public class MyBillsPage extends Page {
     public void onShow(Object param) {
         Tasks.run(this, app.billing::myBills, list -> {
             bills = list;
+            LocalDate today = Dates.today();
             table.clear();
             for (Bill b : list) {
-                table.addRow(Fmt.period(b.month(), b.year()), Fmt.number(b.units()), b.total(), b.status());
+                table.addRow(Fmt.period(b.month(), b.year()), Fmt.number(b.units()), b.amountDue(today), Fmt.date(b.dueDate()),
+                        Badge.Label.of(b, today));
             }
             BigDecimal open = list.stream().filter(b -> b.status() != BillStatus.PAID)
-                    .map(Bill::total).reduce(BigDecimal.ZERO, BigDecimal::add);
-            summary.setText(list.size() + (list.size() == 1 ? " bill" : " bills") + "  ·  " + Fmt.money(open) + " outstanding");
+                    .map(b -> b.amountDue(today)).reduce(BigDecimal.ZERO, BigDecimal::add);
+            long late = list.stream().filter(b -> b.isOverdue(today)).count();
+            summary.setText(list.size() + (list.size() == 1 ? " bill" : " bills") + "  ·  " + Fmt.money(open) + " outstanding"
+                    + (late == 0 ? "" : "  ·  " + late + " overdue"));
             pay.setVisible(list.stream().anyMatch(b -> b.status() == BillStatus.NOT_PAID));
             states.show(content, list.isEmpty() ? "empty" : "table");
         });

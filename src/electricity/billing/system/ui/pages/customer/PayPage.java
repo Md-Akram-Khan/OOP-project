@@ -2,6 +2,7 @@ package electricity.billing.system.ui.pages.customer;
 
 import electricity.billing.system.client.PaymentClient;
 import electricity.billing.system.common.Api;
+import electricity.billing.system.common.Dates;
 import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatus;
 import electricity.billing.system.model.Payment;
@@ -29,6 +30,7 @@ import java.awt.Component;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.Box;
@@ -58,6 +60,7 @@ public class PayPage extends Page {
     private final Badge modeBadge = new Badge("Sandbox · test mode", Theme.WARNING);
     private final Txt testCard = Txt.small("Test card 4111 1111 1111 1111 · exp 12/26 · CVV 111 · OTP 111111").wrap(300);
     private final Txt doneText = Txt.muted(" ").wrap(300);
+    private final Txt lateNote = Txt.small(" ").wrap(300);
     private final SuccessCheck check = new SuccessCheck();
     private final Btn manualPaid = new Btn("I've paid another way", Glyph.CHECK, Btn.Style.SECONDARY).fullWidth();
 
@@ -81,7 +84,7 @@ public class PayPage extends Page {
         manualPaid.addActionListener(e -> reportManualPayment());
 
         readyView = Ui.vbox(14,
-                Txt.caps("Paying"), payingLabel, payingAmount, modeBadge,
+                Txt.caps("Paying"), payingLabel, payingAmount, lateNote, modeBadge,
                 Box.createVerticalStrut(2), payBtn,
                 Txt.small("You'll pay on SSLCommerz's secure page in your browser. "
                         + "This page updates by itself when the payment is confirmed.").wrap(300),
@@ -170,9 +173,12 @@ public class PayPage extends Page {
             for (Bill bill : open) {
                 JPanel inner = Ui.clear(new BorderLayout(14, 0));
                 inner.add(new IconTile(Glyph.RECEIPT, 42, Theme.BLUE), BorderLayout.WEST);
-                inner.add(Ui.vbox(4, Txt.h3(Fmt.period(bill.month(), bill.year())), Txt.small(Fmt.number(bill.units()) + " units")),
+                LocalDate today = Dates.today();
+                String due = bill.dueDate() == null ? "" : bill.isOverdue(today) ? "  ·  was due " + Fmt.date(bill.dueDate())
+                        : "  ·  due " + Fmt.date(bill.dueDate());
+                inner.add(Ui.vbox(4, Txt.h3(Fmt.period(bill.month(), bill.year())), Txt.small(Fmt.number(bill.units()) + " units" + due)),
                         BorderLayout.CENTER);
-                inner.add(Ui.vbox(6, Txt.h3(Fmt.money(bill.total())), Badge.of(bill.status())), BorderLayout.EAST);
+                inner.add(Ui.vbox(6, Txt.h3(Fmt.money(bill.amountDue(today))), Badge.of(bill, today)), BorderLayout.EAST);
                 ChoiceCard[] holder = new ChoiceCard[1];
                 holder[0] = new ChoiceCard(inner, () -> choose(bill, holder[0]));
                 cards.add(holder[0]);
@@ -181,7 +187,7 @@ public class PayPage extends Page {
             }
             for (Bill bill : review) {
                 list.add(Ui.left(Ui.hbox(10, Badge.of(bill.status()),
-                        Txt.small(Fmt.period(bill.month(), bill.year()) + "  ·  " + Fmt.money(bill.total())))));
+                        Txt.small(Fmt.period(bill.month(), bill.year()) + "  ·  " + Fmt.money(bill.amountDue(Dates.today()))))));
                 list.add(Box.createVerticalStrut(8));
             }
             choose(open.get(0), cards.get(0));
@@ -197,8 +203,14 @@ public class PayPage extends Page {
         }
         chosen = bill;
         cards.forEach(c -> c.setSelected(c == card));
+        LocalDate today = Dates.today();
         payingLabel.setText(Fmt.period(bill.month(), bill.year()));
-        payingAmount.setText(Fmt.money(bill.total()));
+        payingAmount.setText(Fmt.money(bill.amountDue(today)));
+        lateNote.setVisible(bill.dueDate() != null);
+        lateNote.setText(bill.isOverdue(today)
+                ? "Includes the late fee: this bill was due on " + Fmt.date(bill.dueDate()) + "."
+                : bill.totalAfterDue() == null ? " "
+                : "Pay by " + Fmt.date(bill.dueDate()) + ". After that it's " + Fmt.money(bill.totalAfterDue()) + " with the late fee.");
     }
 
     private void showReady() {

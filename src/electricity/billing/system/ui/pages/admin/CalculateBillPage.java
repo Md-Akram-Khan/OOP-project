@@ -1,13 +1,14 @@
 package electricity.billing.system.ui.pages.admin;
 
 import electricity.billing.system.common.Api;
-import electricity.billing.system.model.BillType;
+import electricity.billing.system.model.BillBreakdown;
 import electricity.billing.system.model.Customer;
 import electricity.billing.system.model.Months;
 import electricity.billing.system.ui.AppContext;
 import electricity.billing.system.ui.Page;
 import electricity.billing.system.ui.components.Anim;
 import electricity.billing.system.ui.components.Btn;
+import electricity.billing.system.ui.components.Callout;
 import electricity.billing.system.ui.components.Card;
 import electricity.billing.system.ui.components.Field;
 import electricity.billing.system.ui.components.GradientText;
@@ -29,35 +30,51 @@ import java.util.List;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JComboBox;
 import javax.swing.JList;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
-/** Records a meter reading; a dark preview card prices the bill live as the admin types. */
+/**
+ * Records a meter reading. The admin types today's reading (the previous one
+ * comes from the last bill) and a dark preview card prices the bill live with
+ * the BERC slab tariff, while the bill checker flags anything that looks wrong.
+ */
 public class CalculateBillPage extends Page {
 
     private final JComboBox<Customer> customer = Field.combo();
     private final JComboBox<String> month = Field.combo();
     private final JComboBox<Integer> year = Field.combo();
-    private final Field units = Field.text("Units consumed", "e.g. 240", Glyph.GAUGE);
+    private final Field previous = Field.text("Previous reading", "From the last bill", Glyph.CLOCK);
+    private final Field current = Field.text("Current reading", "Number on the meter today", Glyph.GAUGE);
+    private final Txt meterInfo = Txt.small(" ");
+    private final Txt previousHint = Txt.small(" ").wrap(190);
+    private final Callout warnings = new Callout(Glyph.ALERT, Theme.WARNING, "Check before saving", 360);
     private final Btn save = new Btn("Save bill", Glyph.CHECK, Btn.Style.PRIMARY).fullWidth();
 
     private final Txt previewName = white("Choose a customer", Theme.semibold(18), 255);
     private final Txt previewTariff = white(" ", Theme.regular(13), 170);
-    private final Txt energy = white("—", Theme.semibold(14), 255);
-    private final Txt energyDetail = white(" ", Theme.regular(12), 150);
-    private final Txt fixed = white("—", Theme.semibold(14), 255);
+    private final Txt previewUnits = white(" ", Theme.regular(13), 200);
+    private final JPanel slabRows = Ui.vbox(8);
+    private final Txt demand = white("—", Theme.semibold(14), 255);
+    private final Txt demandDetail = white(" ", Theme.regular(12), 150);
+    private final Txt vat = white("—", Theme.semibold(14), 255);
+    private final Txt rent = white("—", Theme.semibold(14), 255);
+    private final Txt dueLabel = white("Total payable", Theme.regular(14), 190);
     private final GradientText total = new GradientText(Fmt.money(0), Theme.semibold(40), Theme.AQUA, Theme.AMBER);
-    private final Txt hint = white("Enter units to see the total.", Theme.regular(13), 160);
+    private final Txt afterDue = white(" ", Theme.semibold(13), 220);
+    private final Txt hint = white("Enter the current reading to see the bill.", Theme.regular(13), 160).wrap(340);
     private final Timer debounce;
     private double shownTotal;
     private Timer totalAnim;
     private String pendingMeter;
+    private Api.BillPreview lastPreview;
+    private int requestId;
 
     public CalculateBillPage(AppContext app) {
         super(app);
-        add(header("Calculate bill", "Record a meter reading. The bill is priced live as you type."), BorderLayout.NORTH);
+        add(header("Calculate bill", "Enter the meter reading. The bill is priced live with the BERC slab tariff."), BorderLayout.NORTH);
 
         customer.setRenderer(new DefaultListCellRenderer() {
             @Override
@@ -78,8 +95,10 @@ public class CalculateBillPage extends Page {
 
         debounce = new Timer(350, e -> refreshPreview());
         debounce.setRepeats(false);
-        customer.addActionListener(e -> debounce.restart());
-        units.textField().getDocument().addDocumentListener(new DocumentListener() {
+        customer.addActionListener(e -> loadLastReading());
+        month.addActionListener(e -> debounce.restart());
+        year.addActionListener(e -> debounce.restart());
+        DocumentListener typing = new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
                 debounce.restart();
@@ -94,15 +113,19 @@ public class CalculateBillPage extends Page {
             public void changedUpdate(DocumentEvent e) {
                 debounce.restart();
             }
-        });
+        };
+        previous.textField().getDocument().addDocumentListener(typing);
+        current.textField().getDocument().addDocumentListener(typing);
         save.addActionListener(e -> saveBill());
+        warnings.setVisible(false);
 
         Card form = new Card(new BorderLayout()).pad(26, 28, 26, 28);
         form.add(Ui.vbox(18,
-                Ui.vbox(4, Txt.h2("Meter reading"), Txt.small("One bill per customer per month.")),
-                Field.of("Customer", customer),
+                Ui.vbox(4, Txt.h2("Meter reading"), Txt.small("One bill per customer per month. Units = current − previous.")),
+                Ui.vbox(6, Field.of("Customer", customer), meterInfo),
                 Ui.columns(16, Field.of("Month", month), Field.of("Year", year)),
-                units,
+                Ui.columns(16, Ui.vbox(4, previous, previousHint), current),
+                warnings,
                 save), BorderLayout.NORTH);
 
         Card preview = new Card(new BorderLayout()).pad(28, 28, 28, 28)
@@ -110,13 +133,14 @@ public class CalculateBillPage extends Page {
         Txt caps = new Txt("BILL PREVIEW", Theme.semibold(11).deriveFont(java.util.Map.of(java.awt.font.TextAttribute.TRACKING, 0.14)),
                 () -> Theme.AQUA);
         preview.add(Ui.vbox(10,
-                caps, previewName, previewTariff,
+                caps, previewName, previewTariff, previewUnits,
                 divider(),
-                line("Energy charge", energy), energyDetail,
-                line("Fixed charges", fixed),
-                white("Meter rent, service charge, service tax and fixed tax", Theme.regular(12), 150),
+                slabRows,
+                line("Demand charge", demand), demandDetail,
+                line("VAT", vat),
+                line("Meter rent", rent),
                 divider(),
-                white("Total payable", Theme.regular(14), 190), total, hint), BorderLayout.NORTH);
+                dueLabel, total, afterDue, hint), BorderLayout.NORTH);
 
         JPanel row = Ui.clear(new BorderLayout(16, 0));
         row.add(form, BorderLayout.CENTER);
@@ -131,10 +155,10 @@ public class CalculateBillPage extends Page {
     }
 
     private void fillCustomers(List<Customer> list) {
-        Object previous = customer.getSelectedItem();
+        Object previousChoice = customer.getSelectedItem();
         customer.removeAllItems();
         list.forEach(customer::addItem);
-        String wanted = pendingMeter != null ? pendingMeter : previous instanceof Customer c ? c.meterNo() : null;
+        String wanted = pendingMeter != null ? pendingMeter : previousChoice instanceof Customer c ? c.meterNo() : null;
         for (Customer c : list) {
             if (c.meterNo().equals(wanted)) {
                 customer.setSelectedItem(c);
@@ -144,12 +168,38 @@ public class CalculateBillPage extends Page {
             previewName.setText("No customers yet");
             hint.setText("Add a customer first.");
         }
-        refreshPreview();
+        loadLastReading();
     }
 
-    private Integer parseUnits() {
+    /** Fills in the previous reading from the customer's last bill. */
+    private void loadLastReading() {
+        Customer c = (Customer) customer.getSelectedItem();
+        if (c == null) {
+            return;
+        }
+        previewName.setText(c.name());
+        String meterNo = c.meterNo();
+        Tasks.run(() -> app.billing.lastReading(meterNo), last -> {
+            Customer still = (Customer) customer.getSelectedItem();
+            if (still == null || !still.meterNo().equals(meterNo)) {
+                return;
+            }
+            meterInfo.setText(last.billType().displayName() + "  ·  " + Fmt.kw(last.loadKw()) + " sanctioned load  ·  " + last.planName());
+            if (last.reading() != null) {
+                previous.setValue(String.valueOf(last.reading()));
+                previousHint.setText("From the " + last.period() + " bill.");
+            } else {
+                previous.setValue("");
+                previousHint.setText("No reading on file: enter it from the meter or last paper bill.");
+            }
+            refreshPreview();
+        }, error -> Toast.error(this, Tasks.message(error)));
+    }
+
+    /** A whole, non-negative number, or null if the text isn't one. */
+    private static Integer parse(Field field) {
         try {
-            int value = Integer.parseInt(units.value());
+            int value = Integer.parseInt(field.value());
             return value < 0 ? null : value;
         } catch (NumberFormatException e) {
             return null;
@@ -158,34 +208,69 @@ public class CalculateBillPage extends Page {
 
     private void refreshPreview() {
         Customer c = (Customer) customer.getSelectedItem();
-        if (c == null) {
+        if (c == null || month.getSelectedItem() == null || year.getSelectedItem() == null) {
             return;
         }
-        previewName.setText(c.name());
-        Integer u = parseUnits();
-        units.setError(units.value().isEmpty() || u != null ? null : "Enter a whole number of units.");
-        if (u == null) {
-            hint.setText("Enter units to see the total.");
-            hint.setVisible(true);
+        Integer prev = parse(previous);
+        Integer curr = parse(current);
+        previous.setError(previous.value().isEmpty() || prev != null ? null : "Enter a whole number.");
+        current.setError(current.value().isEmpty() || curr != null ? null : "Enter a whole number.");
+        if (curr == null) {
+            showHint("Enter the current reading to see the bill.");
             return;
         }
         String meterNo = c.meterNo();
-        Tasks.run(this, () -> app.billing.preview(meterNo, u), p -> showPreview(p, meterNo));
+        String m = (String) month.getSelectedItem();
+        int y = (Integer) year.getSelectedItem();
+        int id = ++requestId;
+        Tasks.run(() -> app.billing.preview(meterNo, m, y, prev, curr), p -> {
+            if (id == requestId) {
+                showPreview(p);
+            }
+        }, error -> {
+            if (id == requestId) {
+                showHint(Tasks.message(error));
+            }
+        });
     }
 
-    private void showPreview(Api.BillPreview p, String meterNo) {
-        Customer c = (Customer) customer.getSelectedItem();
-        if (c == null || !c.meterNo().equals(meterNo)) {
-            return;
+    private void showHint(String text) {
+        lastPreview = null;
+        hint.setText(text);
+        hint.setVisible(true);
+        previewUnits.setText(" ");
+        warnings.setVisible(false);
+    }
+
+    private void showPreview(Api.BillPreview p) {
+        lastPreview = p;
+        BillBreakdown b = p.breakdown();
+        previewTariff.setText(p.billType().displayName() + "  ·  " + p.planName());
+        previewUnits.setText(Fmt.number(p.previousReading()) + " → " + Fmt.number(p.currentReading()) + "  =  "
+                + Fmt.number(b.units()) + " units" + (b.lifeline() ? "  ·  lifeline rate" : "")
+                + "  ·  " + p.slab().slabLabel() + " slab");
+        slabRows.removeAll();
+        if (b.lines().isEmpty()) {
+            slabRows.add(line("Energy", white(Fmt.money(BigDecimal.ZERO), Theme.semibold(14), 255)));
         }
-        boolean industrial = p.billType() == BillType.INDUSTRIAL;
-        previewTariff.setText((industrial ? "Industrial" : "Normal") + " tariff  ·  Meter #" + meterNo);
-        energy.setText(Fmt.money(p.energyCharge()));
-        energyDetail.setText(p.units() + " units × " + Fmt.money(p.rates().costPerUnit())
-                + (industrial ? " × " + p.rates().industrialMultiplier().stripTrailingZeros().toPlainString() : ""));
-        fixed.setText(Fmt.money(p.rates().fixedCharges()));
+        for (BillBreakdown.Line l : b.lines()) {
+            slabRows.add(line("Energy · " + l.label(), white(Fmt.money(l.amount()), Theme.semibold(14), 255)));
+            slabRows.add(Ui.left(white(Fmt.number(l.units()) + " units × " + Fmt.rate(l.rate()), Theme.regular(12), 150)));
+        }
+        slabRows.revalidate();
+        demand.setText(Fmt.money(b.demand()));
+        demandDetail.setText(Fmt.kw(b.loadKw()) + " × " + Fmt.rate(b.demandRate()) + " per kW");
+        vat.setText(Fmt.money(b.vat()));
+        rent.setText(Fmt.money(b.meterRent()));
+        dueLabel.setText("Pay by " + Fmt.date(p.dueDate()));
+        afterDue.setText("After the due date: " + Fmt.taka(b.payableAfterDue()) + "  (+" + Fmt.percent(b.lateFeePercent()) + " late fee)");
         hint.setVisible(false);
-        animateTotal(p.total());
+        warnings.setVisible(!p.warnings().isEmpty());
+        warnings.title(p.warnings().size() == 1 ? "The bill checker found 1 thing to check"
+                : "The bill checker found " + p.warnings().size() + " things to check").lines(p.warnings());
+        animateTotal(b.payable());
+        revalidate();
+        repaint();
     }
 
     private void animateTotal(BigDecimal target) {
@@ -194,31 +279,50 @@ public class CalculateBillPage extends Page {
         double to = target.doubleValue();
         totalAnim = Anim.run(500, t -> {
             shownTotal = Anim.lerp(from, to, t);
-            total.setText(Fmt.money(t >= 1 ? to : shownTotal));
+            total.setText(t >= 1 ? Fmt.taka(target) : Fmt.money(shownTotal));
         });
     }
 
     private void saveBill() {
         Customer c = (Customer) customer.getSelectedItem();
-        Integer u = parseUnits();
+        Integer prev = parse(previous);
+        Integer curr = parse(current);
         if (c == null) {
             Toast.error(this, "Choose a customer first.");
             return;
         }
-        if (u == null) {
-            units.setError("Enter a whole number of units.");
+        if (curr == null) {
+            current.setError("Enter the reading shown on the meter.");
             return;
+        }
+        if (!previous.value().isEmpty() && prev == null) {
+            previous.setError("Enter a whole number.");
+            return;
+        }
+        boolean acknowledged = false;
+        if (lastPreview != null && !lastPreview.warnings().isEmpty()) {
+            int answer = JOptionPane.showConfirmDialog(this,
+                    "The bill checker found:\n\n• " + String.join("\n• ", lastPreview.warnings()) + "\n\nSave this bill anyway?",
+                    "Check before saving", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (answer != JOptionPane.YES_OPTION) {
+                return;
+            }
+            acknowledged = true;
         }
         String m = (String) month.getSelectedItem();
         int y = (Integer) year.getSelectedItem();
+        boolean ack = acknowledged;
         save.setBusy(true, "Saving…");
-        Tasks.run(() -> app.billing.createBill(c.meterNo(), m, y, u), bill -> {
+        Tasks.run(() -> app.billing.createBill(c.meterNo(), m, y, prev, curr, ack), bill -> {
             save.setBusy(false, null);
-            Toast.success(this, "Saved " + c.name() + "'s " + bill.month() + " bill: " + Fmt.money(bill.total()) + ".");
-            units.setValue("");
+            Toast.success(this, "Saved " + c.name() + "'s " + bill.month() + " bill: " + Fmt.taka(bill.total())
+                    + ", due " + Fmt.date(bill.dueDate()) + ".");
+            current.setValue("");
+            loadLastReading();
         }, error -> {
             save.setBusy(false, null);
             Toast.error(this, Tasks.message(error));
+            refreshPreview();
         });
     }
 

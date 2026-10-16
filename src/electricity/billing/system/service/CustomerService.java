@@ -70,12 +70,20 @@ public class CustomerService {
         return Database.withConnection(c -> new CustomerDao(c).meterNumbers());
     }
 
+    public Optional<Meter> meter(String meterNo) throws SQLException {
+        return Database.withConnection(c -> new MeterDao(c).find(meterNo));
+    }
+
     public void saveMeter(Meter meter) throws SQLException {
         if (meter.billType() == null || !Meter.TYPES.contains(meter.meterType())) {
             throw new AppException("Choose a meter type and a bill type.");
         }
         if (meter.days() <= 0) {
             throw new AppException("Billing days must be positive.");
+        }
+        if (meter.sanctionedLoadKw() != null && (meter.sanctionedLoadKw().signum() <= 0
+                || meter.sanctionedLoadKw().compareTo(Meter.MAX_LOAD_KW) > 0)) {
+            throw new AppException("The sanctioned load must be between 0.1 and " + Meter.MAX_LOAD_KW + " kW.");
         }
         Database.withConnection(c -> {
             if (!new CustomerDao(c).exists(meter.meterNo())) {

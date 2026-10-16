@@ -1,18 +1,35 @@
 package electricity.billing.system.model;
 
-/** The tariff a meter is billed on. */
+/**
+ * The customer category a meter is billed under. Each category has its own
+ * tariff plan; {@link #label()} is the value stored in the database.
+ */
 public enum BillType {
-    NORMAL("Normal"),
-    INDUSTRIAL("Industrial");
+    NORMAL("Normal", "Residential", "LT-A domestic: telescopic slab tariff with a lifeline band"),
+    INDUSTRIAL("Industrial", "Commercial & industrial", "Shops, offices and industry: one flat rate per unit");
 
     private final String label;
+    private final String displayName;
+    private final String description;
 
-    BillType(String label) {
+    BillType(String label, String displayName, String description) {
         this.label = label;
+        this.displayName = displayName;
+        this.description = description;
     }
 
+    /** The value stored in meter_info.bill_type. */
     public String label() {
         return label;
+    }
+
+    /** What the app shows, e.g. "Residential". */
+    public String displayName() {
+        return displayName;
+    }
+
+    public String description() {
+        return description;
     }
 
     public static BillType fromLabel(String label) {
@@ -30,6 +47,6 @@ public enum BillType {
 
     @Override
     public String toString() {
-        return label;
+        return displayName;
     }
 }
