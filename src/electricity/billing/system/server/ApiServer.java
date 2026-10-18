@@ -3,6 +3,7 @@ package electricity.billing.system.server;
 import com.sun.net.httpserver.HttpServer;
 import electricity.billing.system.common.Config;
 import electricity.billing.system.db.Database;
+import electricity.billing.system.meterphoto.IdCardReader;
 import electricity.billing.system.service.PaymentService;
 import electricity.billing.system.service.SignupService;
 import electricity.billing.system.service.SslCommerzGateway;
@@ -53,6 +54,7 @@ public final class ApiServer {
             case "sms" -> "SMS gateway";
             default -> "DEMO mode (codes shown on screen; set FIREBASE_* or SMS_* in .env to send real SMS)";
         });
+        LOG.info("NID card reading at sign-up: " + IdCardReader.ocrEngine());
         http.setExecutor(executor);
     }
 

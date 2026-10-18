@@ -67,6 +67,11 @@ final class Raster {
      * gives the sharpest pattern of dark rows and light gaps. Checked from -8° to 8°.
      */
     double textAngle() {
+        return textAngle(8);
+    }
+
+    /** Like {@link #textAngle()}, checking from -{@code maxDegrees} to {@code maxDegrees}. */
+    double textAngle(double maxDegrees) {
         int step = Math.max(1, Math.max(width, height) / 500);
         int[] mean = localMean(Math.max(6, Math.min(width, height) / 30));
         List<int[]> ink = new ArrayList<>();
@@ -80,7 +85,7 @@ final class Raster {
         }
         double best = 0;
         double bestScore = -1;
-        for (double deg = -8; deg <= 8.001; deg += 0.5) {
+        for (double deg = -maxDegrees; deg <= maxDegrees + 0.001; deg += 0.5) {
             double a = Math.toRadians(deg);
             double sin = Math.sin(a);
             double cos = Math.cos(a);

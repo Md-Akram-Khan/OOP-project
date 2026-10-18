@@ -2,6 +2,7 @@ package electricity.billing.system.meterphoto;
 
 import electricity.billing.system.common.AppException;
 import electricity.billing.system.model.NidRecord;
+import java.awt.image.BufferedImage;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,10 +11,12 @@ import java.util.Locale;
 /**
  * Checks a photo of a Bangladeshi NID card against the dummy NID database.
  *
- * Like the meter photo reader, it doesn't try to read arbitrary text: it finds
- * which stored record's NID number is printed on the card, then checks that
- * the same record's English name and date of birth are printed there too. All
- * three must match.
+ * It finds which stored record's NID number is printed on the card, then
+ * checks that the same record's English name and date of birth are printed
+ * there too. All three must match. The card is read with Tesseract OCR when
+ * it's installed ({@link NidOcr}), which copes with most photos; the built-in
+ * reader ({@link SerialMatcher}) is used without it, and as a second opinion
+ * for whatever Tesseract missed.
  *
  * This only shows that the card matches a stored record. It can't tell a
  * genuine card from a well-made copy, or that the person holding it is its
@@ -47,6 +50,10 @@ public final class IdCardReader {
     public record CardText(String nidNo, String name, String dateOfBirth) {
     }
 
+    /** What one way of reading the card found, before it's put into words for the applicant. */
+    record Findings(NidRecord record, boolean several, boolean nameFound, boolean birthDateFound, CardText read) {
+    }
+
     private IdCardReader() {
     }
 
@@ -67,7 +74,88 @@ public final class IdCardReader {
      * @throws AppException if the photo can't be read at all
      */
     public static Result check(byte[] photo, List<NidRecord> records) {
-        Raster raster = Raster.atLeast(MeterPhotoReader.decode(photo), 1300, 1600);
+        BufferedImage image = MeterPhotoReader.decode(photo);
+        Findings ocr = null;
+        if (TesseractOcr.available()) {
+            NidOcr.Reading reading = NidOcr.read(image);
+            ocr = NidOcr.check(reading.lines(), records);
+            if (!complete(ocr)) {
+                List<String> more = new ArrayList<>(reading.lines());
+                more.addAll(NidOcr.secondRound(reading.upright()));
+                ocr = NidOcr.check(more, records);
+            }
+            if (complete(ocr)) {
+                return result(ocr, image);
+            }
+        }
+        Findings builtIn;
+        try {
+            builtIn = builtIn(image, records);
+        } catch (AppException e) {
+            if (ocr == null) {
+                throw e;
+            }
+            builtIn = null;
+        }
+        return result(ocr == null ? builtIn : merge(ocr, builtIn), image);
+    }
+
+    private static boolean complete(Findings f) {
+        return f.record() != null && !f.several() && f.nameFound() && f.birthDateFound();
+    }
+
+    /** Tesseract's findings, with whatever the built-in reader also found for the same record. */
+    private static Findings merge(Findings ocr, Findings builtIn) {
+        if (builtIn == null) {
+            return ocr;
+        }
+        boolean differ = ocr.record() != null && builtIn.record() != null
+                && !ocr.record().nidNo().equals(builtIn.record().nidNo());
+        NidRecord record = ocr.record() != null ? ocr.record() : builtIn.record();
+        boolean name = (ocr.record() == record && ocr.nameFound()) || (builtIn.record() == record && builtIn.nameFound());
+        boolean birth = (ocr.record() == record && ocr.birthDateFound())
+                || (builtIn.record() == record && builtIn.birthDateFound());
+        CardText a = ocr.read();
+        CardText b = builtIn.read();
+        CardText read = new CardText(a.nidNo() != null ? a.nidNo() : b.nidNo(), a.name() != null ? a.name() : b.name(),
+                a.dateOfBirth() != null ? a.dateOfBirth() : b.dateOfBirth());
+        return new Findings(record, ocr.several() || builtIn.several() || differ, name, birth, read);
+    }
+
+    /** The findings put into words: what matched and, if anything didn't, what to do about it. */
+    private static Result result(Findings f, BufferedImage image) {
+        String small = smallPhotoAdvice(image);
+        CardText read = f.read();
+        if (f.several()) {
+            return new Result(null, false, false, false,
+                    "The card matches more than one NID record. Retake the photo so only your card is in view.", read);
+        }
+        if (f.record() == null) {
+            String problem = read.nidNo() == null
+                    ? "The NID number on this card couldn't be read. Retake the photo straight on, in good light, with the "
+                            + "whole card in focus."
+                    : "The NID number read from this card (" + read.nidNo() + ") isn't in the NID records. If it was misread, "
+                            + "retake the photo straight on, in good light, with the whole card in focus.";
+            return new Result(null, false, false, false, problem + small, read);
+        }
+        boolean name = f.nameFound();
+        boolean birth = f.birthDateFound();
+        if (!name || !birth) {
+            return new Result(f.record(), true, name, birth, "The NID number was found, but the " + (!name && !birth
+                    ? "name and date of birth" : !name ? "name" : "date of birth") + " on the card "
+                    + (!name && !birth ? "don't" : "doesn't") + " match the NID record. "
+                    + "Make sure the whole card is in the photo and in focus." + small, read);
+        }
+        return new Result(f.record(), true, true, true, null, read);
+    }
+
+    /**
+     * The built-in reader: compares the card's characters with drawn letters.
+     *
+     * @throws AppException if no printed text is found at all
+     */
+    private static Findings builtIn(BufferedImage image, List<NidRecord> records) {
+        Raster raster = Raster.atLeast(image, 1300, 1600);
         // Level a tilted photo so each printed line can be read as a line.
         double angle = raster.textAngle();
         if (Math.abs(angle) > Math.toRadians(0.4)) {
@@ -89,17 +177,8 @@ public final class IdCardReader {
         List<NidRecord> distinct = new ArrayList<>(found);
         distinct.removeIf(a -> found.stream().anyMatch(b -> b != a && b.nidNo().contains(a.nidNo())
                 && b.nidNo().length() > a.nidNo().length()));
-        if (distinct.isEmpty()) {
-            String problem = read.nidNo() == null
-                    ? "The NID number on this card couldn't be read. Retake the photo straight on, in good light, with the "
-                            + "whole card in focus."
-                    : "The NID number read from this card (" + read.nidNo() + ") isn't in the NID records. If it was misread, "
-                            + "retake the photo straight on, in good light, with the whole card in focus.";
-            return new Result(null, false, false, false, problem, read);
-        }
-        if (distinct.size() > 1) {
-            return new Result(null, false, false, false,
-                    "The card matches more than one NID record. Retake the photo so only your card is in view.", read);
+        if (distinct.size() != 1) {
+            return new Findings(null, distinct.size() > 1, false, false, read);
         }
         NidRecord record = distinct.get(0);
         // Initials ("S. M.") are small and their dots blur into them, so the rest of the name may match without them.
@@ -111,13 +190,29 @@ public final class IdCardReader {
         boolean birth = SerialMatcher.wordsInRow(printed, DAY_FIRST.format(record.dateOfBirth()))
                 || SerialMatcher.wordsInRow(printed, DAY_FIRST_SHORT.format(record.dateOfBirth()))
                 || SerialMatcher.wordsInRow(printed, MONTH_YEAR.format(record.dateOfBirth()));
-        if (!name || !birth) {
-            return new Result(record, true, name, birth, "The NID number was found, but the " + (!name && !birth
-                    ? "name and date of birth" : !name ? "name" : "date of birth") + " on the card "
-                    + (!name && !birth ? "don't" : "doesn't") + " match the NID record. "
-                    + "Make sure the whole card is in the photo and in focus.", read);
+        return new Findings(record, false, name, birth, read);
+    }
+
+    /** Which OCR engine reads cards, for the server's start-up log. */
+    public static String ocrEngine() {
+        return TesseractOcr.describe();
+    }
+
+    /** Photos smaller than this (longer side, in pixels) are too small for a card's small print to be read reliably. */
+    private static final int SMALL_PHOTO = 1000;
+
+    /**
+     * Extra advice for a refused photo that is too small: on a screenshot or a
+     * compressed copy the name can be only a few pixels tall, and no amount of
+     * enlarging brings the letters back. Empty for a photo of a reasonable size.
+     */
+    private static String smallPhotoAdvice(BufferedImage image) {
+        if (Math.max(image.getWidth(), image.getHeight()) >= SMALL_PHOTO) {
+            return "";
         }
-        return new Result(record, true, true, true, null, read);
+        return " This photo is only " + image.getWidth() + " x " + image.getHeight() + " pixels, too small for the card's "
+                + "small print to be read reliably. Use the original photo from your phone's camera (at least " + SMALL_PHOTO
+                + " pixels wide), not a screenshot or a compressed copy.";
     }
 
     /** The name without its initials ("S. M. ARIFUL ISLAM" → "ARIFUL ISLAM"), or null if it has none or too little is left. */

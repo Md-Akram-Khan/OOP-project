@@ -30,6 +30,9 @@ public final class ApiClient {
 
     private static final String DEFAULT_URL = "http://localhost:8080";
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
+    /** Requests carrying photos take longer: the upload, and reading the photo on the server. */
+    private static final Duration PHOTO_TIMEOUT = Duration.ofSeconds(90);
+    private static final int PHOTO_BODY_CHARS = 1_000_000;
     private static volatile ApiClient instance;
 
     private final String baseUrl;
@@ -120,8 +123,9 @@ public final class ApiClient {
     }
 
     private <T> T send(String method, String path, Object body, Type responseType) {
+        String json = body == null ? null : Json.GSON.toJson(body);
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl + path))
-                .timeout(TIMEOUT)
+                .timeout(json != null && json.length() > PHOTO_BODY_CHARS ? PHOTO_TIMEOUT : TIMEOUT)
                 .header("Accept", "application/json");
         String currentToken = token;
         if (currentToken != null) {
@@ -131,7 +135,7 @@ public final class ApiClient {
             request.method(method, HttpRequest.BodyPublishers.noBody());
         } else {
             request.header("Content-Type", "application/json; charset=utf-8")
-                    .method(method, HttpRequest.BodyPublishers.ofString(Json.GSON.toJson(body), StandardCharsets.UTF_8));
+                    .method(method, HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8));
         }
 
         HttpResponse<String> response;

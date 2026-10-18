@@ -51,17 +51,33 @@ final class NidText {
         return best;
     }
 
-    /** What follows the "Name" label, as letters. */
+    /**
+     * What follows the "Name" label, as letters: on the same line (old cards,
+     * "Name: Tajul Islam"), or on the line below when the label stands alone
+     * (smart cards print a small "Name" above the name).
+     */
     private static String name(List<ReadLine> lines) {
         String best = null;
         double bestScore = 0;
         for (ReadLine line : lines) {
             String text = line.text().trim();
             int after = afterLabel(text, "NAME");
-            if (after < 0) {
+            String rest;
+            if (after >= 0) {
+                rest = text.substring(after);
+            } else if (labelOnly(text, "NAME")) {
+                ReadLine value = lineBeside(lines, line);
+                if (value == null) {
+                    value = lineBelow(lines, line);
+                }
+                if (value == null) {
+                    continue;
+                }
+                rest = value.text();
+            } else {
                 continue;
             }
-            String value = asLetters(text.substring(after)).replaceAll("[^A-Z ]", "").trim().replaceAll(" +", " ");
+            String value = asLetters(rest).replaceAll("[^A-Z ]", "").trim().replaceAll(" +", " ");
             if (value.replace(" ", "").length() >= 3 && line.score() + value.length() / 100.0 > bestScore) {
                 best = value;
                 bestScore = line.score() + value.length() / 100.0;
@@ -138,6 +154,43 @@ final class NidText {
             return distance(word, label) <= allowed ? space + 1 : -1;
         }
         return upper.length() > label.length() && distance(upper.substring(0, label.length()), label) <= 1 ? label.length() : -1;
+    }
+
+    /** True when the whole line is just the label, read loosely as in {@link #afterLabel}. */
+    private static boolean labelOnly(String text, String label) {
+        String word = text.toUpperCase(Locale.ROOT).replace(" ", "");
+        int allowed = word.length() == label.length() + 1 ? 2 : 1;
+        return word.length() >= label.length() - 1 && distance(word, label) <= allowed;
+    }
+
+    /** The nearest line to the right of {@code label} on the same row (the label and its value read as separate lines); null if none. */
+    private static ReadLine lineBeside(List<ReadLine> lines, ReadLine label) {
+        int h = Math.max(1, label.area().height());
+        double cy = (label.area().y0() + label.area().y1()) / 2.0;
+        ReadLine best = null;
+        for (ReadLine line : lines) {
+            double lineCy = (line.area().y0() + line.area().y1()) / 2.0;
+            int gap = line.area().x0() - label.area().x1();
+            boolean beside = Math.abs(lineCy - cy) < 0.5 * h && gap >= 0 && gap < 10 * h;
+            if (beside && (best == null || line.area().x0() < best.area().x0())) {
+                best = line;
+            }
+        }
+        return best;
+    }
+
+    /** The nearest line starting just under {@code label}, roughly level with its left edge; null if none. */
+    private static ReadLine lineBelow(List<ReadLine> lines, ReadLine label) {
+        int h = Math.max(1, label.area().height());
+        ReadLine best = null;
+        for (ReadLine line : lines) {
+            int gap = line.area().y0() - label.area().y1();
+            boolean under = gap > -h / 2 && gap < 3 * h && Math.abs(line.area().x0() - label.area().x0()) < 4 * h;
+            if (under && line != label && (best == null || line.area().y0() < best.area().y0())) {
+                best = line;
+            }
+        }
+        return best;
     }
 
     private static int distance(String a, String b) {
