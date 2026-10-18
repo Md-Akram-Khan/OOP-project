@@ -20,8 +20,13 @@ create table if not exists login (
     name     varchar(50),
     -- PBKDF2 hash written by the app, '' until the customer signs up
     password varchar(255) not null default '',
-    "user"   varchar(20) not null check ("user" in ('Admin', 'Customer'))
+    "user"   varchar(20) not null,
+    -- applicants (phone and NID verified, no meter yet) sign up with these
+    phone    varchar(20),
+    nid_no   varchar(17),
+    constraint login_role_check check ("user" in ('Admin', 'Customer', 'Applicant'))
 );
+create unique index if not exists login_nid_key on login (nid_no) where nid_no is not null;
 create unique index if not exists login_username_key on login (lower(username)) where username <> '';
 create unique index if not exists login_customer_meter_key on login (meter_no) where meter_no is not null;
 
@@ -31,8 +36,13 @@ create table if not exists meter_info (
     bill_type  varchar(20) not null check (bill_type in ('Normal', 'Industrial')),
     days       integer not null default 30,
     -- approved load; the monthly demand charge is this many kW x the tariff's rate
-    sanctioned_load_kw numeric(7, 2) not null default 2.00
+    sanctioned_load_kw numeric(7, 2) not null default 2.00,
+    -- serial printed on the physical meter (e.g. E-756216); meter photos must show it
+    serial_no varchar(30)
 );
+create unique index if not exists meter_info_serial_key
+    on meter_info (upper(regexp_replace(serial_no, '[^A-Za-z0-9]', '', 'g')))
+    where serial_no is not null;
 
 -- ---- Tariffs ----------------------------------------------------------------
 -- One plan per customer category and start date. A bill uses the newest plan that
@@ -140,6 +150,81 @@ create table if not exists payment (
 create index if not exists payment_bill_idx on payment (meter_no, year, month);
 
 -- ---- Complaints and service requests ----------------------------------------
+-- The photo each bill was read from, kept as evidence. The same photo can't be
+-- used for two bills (sha256 is unique).
+create table if not exists meter_photo (
+    meter_no     varchar(20) not null,
+    year         integer not null,
+    month        varchar(10) not null,
+    image        bytea not null,
+    content_type varchar(30) not null,
+    sha256       char(64) not null unique,
+    display_text varchar(20) not null,
+    serial_seen  varchar(40),
+    uploaded_by  varchar(60) not null,
+    uploaded_at  timestamptz not null default now(),
+    primary key (meter_no, year, month),
+    foreign key (meter_no, year, month) references bill (meter_no, year, month) on delete cascade
+);
+
+-- ---- Dummy NID authority database -----------------------------------------
+-- A stand-in for the Election Commission's NID service, which needs authorised
+-- access. These are manually stored sample records for demonstration only.
+create table if not exists nid_registry (
+    nid_no         varchar(17) primary key,
+    name_en        varchar(60) not null,
+    name_bn        varchar(60) not null,
+    father_bn      varchar(80),
+    mother_bn      varchar(80),
+    date_of_birth  date not null,
+    address_bn     varchar(300),
+    birth_place_bn varchar(60),
+    blood_group    varchar(4),
+    issue_date     date
+);
+
+insert into nid_registry (nid_no, name_en, name_bn, father_bn, mother_bn, date_of_birth, address_bn, birth_place_bn,
+                          blood_group, issue_date)
+values ('3767242658', 'Tajul Islam', 'তাজুল ইসলাম', 'মোঃ আবুল হোসেন ভূইয়া', 'মোসাঃ আয়েশা বেগম', date '1990-12-01',
+        'বাসা/হোল্ডিং: #১০৯, গ্রাম/রাস্তা: পালপাড়া, পালপাড়া, ডাকঘর: চাঁদপুর, চাঁদপুর সদর-৩৬৪০', 'চাঁদপুর সদর', 'B+',
+        date '2010-10-21'),
+       -- Fictional sample people, so the check has more than one record to choose from.
+       ('5823904417', 'Nasrin Sultana', 'নাসরিন সুলতানা', 'মোঃ আব্দুল করিম', 'মোসাঃ রহিমা খাতুন', date '1995-01-30',
+        'বাসা: ১২, রোড: ৫, ধানমন্ডি, ঢাকা-১২০৫', 'ঢাকা', 'O+', date '2013-06-10'),
+       ('2914406683', 'Tanvir Ahmed', 'তানভীর আহমেদ', 'মোঃ নজরুল ইসলাম', 'মোসাঃ সালমা বেগম', date '2000-11-05',
+        'গ্রাম: কাশিপুর, ডাকঘর: বরিশাল সদর-৮২০০', 'বরিশাল', 'A+', date '2018-02-14'),
+       ('1967242658', 'Kamal Hossain', 'কামাল হোসেন', 'মোঃ জয়নাল আবেদীন', 'মোসাঃ ফাতেমা বেগম', date '1975-07-02',
+        'বাসা: ৪৫, আগ্রাবাদ, চট্টগ্রাম-৪১০০', 'চট্টগ্রাম', 'AB+', date '2008-09-01')
+on conflict (nid_no) do nothing;
+
+-- ---- Applications for a new meter -------------------------------------------
+create table if not exists meter_application (
+    id             bigint generated always as identity primary key,
+    login_id       bigint not null references login (id) on delete cascade,
+    applicant_name varchar(50) not null,
+    nid_no         varchar(17) not null,
+    phone          varchar(20) not null,
+    email          varchar(100) not null,
+    house          varchar(60) not null,
+    road           varchar(80) not null,
+    area           varchar(60) not null,
+    post_office    varchar(60) not null,
+    district       varchar(30) not null,
+    division       varchar(30) not null,
+    bill_type      varchar(20) not null check (bill_type in ('Normal', 'Industrial')),
+    load_kw        numeric(7, 2) not null check (load_kw > 0),
+    phase          varchar(10) not null check (phase in ('SINGLE', 'THREE')),
+    ownership      varchar(10) not null check (ownership in ('OWNER', 'TENANT')),
+    notes          varchar(500),
+    status         varchar(20) not null default 'SUBMITTED'
+                   check (status in ('SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CONNECTED')),
+    admin_note     varchar(500),
+    meter_no       varchar(20) references customer (meter_no) on delete set null,
+    created_at     timestamptz not null default now(),
+    updated_at     timestamptz not null default now()
+);
+create index if not exists meter_application_login_idx on meter_application (login_id, created_at desc);
+
 create table if not exists complaint (
     id          bigint generated always as identity primary key,
     meter_no    varchar(20) not null references customer (meter_no) on delete cascade,
@@ -189,3 +274,6 @@ alter table tariff_slab  enable row level security;
 alter table complaint    enable row level security;
 alter table notification enable row level security;
 alter table audit_log    enable row level security;
+alter table meter_photo  enable row level security;
+alter table nid_registry      enable row level security;
+alter table meter_application enable row level security;

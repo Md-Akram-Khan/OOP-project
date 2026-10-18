@@ -1,15 +1,18 @@
 package electricity.billing.system.service;
 
+import electricity.billing.system.common.Api;
 import electricity.billing.system.common.AppException;
 import electricity.billing.system.db.CustomerDao;
 import electricity.billing.system.db.Database;
-import electricity.billing.system.db.UserDao;
 import electricity.billing.system.db.UserDao.StoredUser;
+import electricity.billing.system.db.UserDao;
 import electricity.billing.system.model.Customer;
 import electricity.billing.system.model.Role;
 import electricity.billing.system.model.UserAccount;
 import electricity.billing.system.security.PasswordHasher;
 import java.sql.SQLException;
+import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 /** Logging in and creating accounts. */
@@ -32,6 +35,11 @@ public class AuthService {
             }
             return user.toAccount();
         });
+    }
+
+    /** Every administrator, for the Team page. Only admins may ask. */
+    public List<Api.AdminInfo> admins(UserAccount requestedBy) throws SQLException {
+        return Database.withConnection(c -> new UserDao(c).admins(requestedBy.username()));
     }
 
     public boolean adminExists() throws SQLException {
@@ -74,8 +82,9 @@ public class AuthService {
         }
         validateCredentials(username, password);
         String hash = PasswordHasher.hash(password);
+        String meter = meterNo.trim().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
         Database.inTransaction(c -> {
-            Customer customer = new CustomerDao(c).find(meterNo)
+            Customer customer = new CustomerDao(c).find(meter)
                     .filter(found -> found.email() != null && found.email().trim().equalsIgnoreCase(email))
                     .orElseThrow(() -> new AppException("The meter number and email don't match our records."));
             UserDao users = new UserDao(c);
@@ -89,7 +98,7 @@ public class AuthService {
         });
     }
 
-    private static void validateCredentials(String username, char[] password) {
+    static void validateCredentials(String username, char[] password) {
         if (!USERNAME.matcher(username).matches()) {
             throw new AppException("Usernames must be 3-30 characters: letters, numbers, dots, dashes or underscores.");
         }

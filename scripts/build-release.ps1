@@ -43,13 +43,13 @@ function New-Jar([string]$name, [string[]]$sources, [string]$classpath, [string]
 
 $shared = @('common', 'model')
 
-$ui = @('ui', 'ui/theme', 'ui/components', 'ui/pages/admin', 'ui/pages/customer')
+$ui = @('ui', 'ui/theme', 'ui/components', 'ui/pages/admin', 'ui/pages/customer', 'ui/pages/applicant')
 New-Jar 'Electricity_Billing_System' `
     (Get-Sources (@('.', 'client') + $ui + $shared)) "$gson;$flatlaf;$inter" `
     'electricity.billing.system.Main' @($gson, $flatlaf, $inter) 'release/client' $false
 
 New-Jar 'ebs-server' `
-    (Get-Sources (@('server', 'service', 'db', 'security', 'billing') + $shared)) "$gson;$pg" `
+    (Get-Sources (@('server', 'service', 'db', 'security', 'billing', 'meterphoto') + $shared)) "$gson;$pg" `
     'electricity.billing.system.server.ApiServer' @($gson, $pg) 'release/server' $false
 
 Write-Host 'Done.'

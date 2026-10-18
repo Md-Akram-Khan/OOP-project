@@ -63,7 +63,10 @@ public class AuthWindow extends JFrame {
     private JPanel signInTop;
 
     // Create account
-    private final Segmented signupRole = new Segmented("Customer");
+    private static final String HAVE_METER = "I have a meter";
+    private static final String NEW_METER = "I need a new meter";
+    private final Segmented signupRole = new Segmented(HAVE_METER, NEW_METER);
+    private final Btn startNewMeter = new Btn("Start: verify phone and NID", Glyph.ARROW_RIGHT, Btn.Style.PRIMARY).trailingIcon().fullWidth();
     private final Field meter = Field.text("Meter number", "From your welcome letter", Glyph.HASH);
     private final Field email = Field.text("Registered email", "you@example.com", Glyph.MAIL);
     private final Field fullName = Field.text("Full name", "Your name", Glyph.USER);
@@ -92,6 +95,14 @@ public class AuthWindow extends JFrame {
         signupRole.onChange(i -> buildSignupFields());
         signIn.addActionListener(e -> signIn());
         create.addActionListener(e -> createAccount());
+        startNewMeter.addActionListener(e -> new NewMeterSignupDialog(this, user -> {
+            Toast.success(this, "Account created. Sign in as a customer to apply for your meter.");
+            username.setValue(user);
+            password.setValue("");
+            loginRole.select(1);
+            tabs.select(0);
+            password.input().requestFocusInWindow();
+        }).setVisible(true));
         buildSignupFields();
         int formHeight = Math.max(signInPanel.getPreferredSize().height, signUpPanel.getPreferredSize().height + 70);
         formHost.setPreferredSize(new Dimension(FORM_WIDTH, formHeight));
@@ -104,7 +115,7 @@ public class AuthWindow extends JFrame {
 
         Tasks.run(auth::adminExists, exists -> {
             if (!exists) {
-                signupRole.setOptions(List.of("Customer", "Admin"));
+                signupRole.setOptions(List.of(HAVE_METER, NEW_METER, "Admin"));
             }
         }, error -> { });
     }
@@ -177,7 +188,7 @@ public class AuthWindow extends JFrame {
                 Txt.caps("Sign in as"), loginRole, username, password, loginError,
                 signIn, link("New here?", "Create an account", () -> tabs.select(1)));
         signUpPanel = Ui.vbox(16,
-                Txt.caps("Account type"), signupRole, signupFields, signupError,
+                Txt.caps("I want to sign up as"), signupRole, signupFields, signupError,
                 create, link("Already have an account?", "Sign in", () -> tabs.select(0)));
         signInTop = Ui.top(signInPanel);
         signUpTop = Ui.top(signUpPanel);
@@ -231,11 +242,20 @@ public class AuthWindow extends JFrame {
 
     private void buildSignupFields() {
         signupFields.removeAll();
-        boolean customer = "Customer".equals(signupRole.selectedOption());
+        boolean customer = HAVE_METER.equals(signupRole.selectedOption());
+        boolean newMeter = NEW_METER.equals(signupRole.selectedOption());
         JPanel passwords = Ui.columns(12, newPassword, confirm);
-        JPanel fields = customer
+        JPanel fields = newMeter
+                ? Ui.vbox(12,
+                        Txt.body("No meter yet? Apply for one in three quick steps:"),
+                        Txt.small("1.  Verify your mobile number with a one-time code").wrap(FORM_WIDTH - 10),
+                        Txt.small("2.  Upload a photo of your NID card to verify your identity").wrap(FORM_WIDTH - 10),
+                        Txt.small("3.  Choose a username and password, then apply for a meter").wrap(FORM_WIDTH - 10),
+                        startNewMeter)
+                : customer
                 ? Ui.vbox(14, Ui.columns(12, meter, email), newUsername, passwords)
                 : Ui.vbox(14, fullName, newUsername, passwords);
+        create.setVisible(!newMeter);
         signupFields.add(fields, BorderLayout.CENTER);
         signupError.setVisible(false);
         signupFields.revalidate();
@@ -285,7 +305,7 @@ public class AuthWindow extends JFrame {
         signupError.setVisible(false);
         newPassword.setError(null);
         confirm.setError(null);
-        boolean customer = "Customer".equals(signupRole.selectedOption());
+        boolean customer = HAVE_METER.equals(signupRole.selectedOption());
         char[] pass = newPassword.password();
         if (!Arrays.equals(pass, confirm.password())) {
             confirm.setError("Passwords don't match.");
@@ -308,7 +328,7 @@ public class AuthWindow extends JFrame {
             create.setBusy(false, null);
             Toast.success(this, "Account created. You can sign in now.");
             if (!customer) {
-                signupRole.setOptions(List.of("Customer"));
+                signupRole.setOptions(List.of(HAVE_METER, NEW_METER));
                 buildSignupFields();
             }
             username.setValue(user);

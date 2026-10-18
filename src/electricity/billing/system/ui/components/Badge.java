@@ -3,6 +3,7 @@ package electricity.billing.system.ui.components;
 import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatus;
 import electricity.billing.system.model.Complaint;
+import electricity.billing.system.model.MeterApplication;
 import electricity.billing.system.ui.theme.Theme;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -30,8 +31,18 @@ public class Badge extends JComponent {
         public static Label of(BillStatus status) {
             return switch (status) {
                 case PAID -> new Label("Paid", Theme.SUCCESS);
-                case PENDING -> new Label("Pending review", Theme.WARNING);
+                case PENDING -> new Label("Unpaid", Theme.AMBER);
                 case NOT_PAID -> new Label("Unpaid", Theme.AMBER);
+            };
+        }
+
+        public static Label of(MeterApplication.Status status) {
+            return switch (status) {
+                case SUBMITTED -> new Label("Submitted", Theme.BLUE);
+                case UNDER_REVIEW -> new Label("Under review", Theme.WARNING);
+                case APPROVED -> new Label("Approved", Theme.AQUA);
+                case REJECTED -> new Label("Rejected", Theme.DANGER);
+                case CONNECTED -> new Label("Meter connected", Theme.SUCCESS);
             };
         }
 

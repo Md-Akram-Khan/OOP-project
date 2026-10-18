@@ -6,9 +6,9 @@ import electricity.billing.system.db.CustomerDao;
 import electricity.billing.system.db.Database;
 import electricity.billing.system.db.MeterDao;
 import electricity.billing.system.db.UserDao;
+import electricity.billing.system.meterphoto.MeterPhotoReader;
 import electricity.billing.system.model.Customer;
 import electricity.billing.system.model.Meter;
-import java.security.SecureRandom;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
@@ -16,38 +16,54 @@ import java.util.Optional;
 /** Adding, reading and updating customers and their meters. */
 public class CustomerService {
 
-    private static final int METER_NUMBER_ATTEMPTS = 10;
-    private static final SecureRandom RANDOM = new SecureRandom();
+    /** A new customer without a meter yet; see {@link #create(Customer, Meter)}. */
+    public Customer create(Customer draft) throws SQLException {
+        return create(draft, null);
+    }
 
     /**
-     * Saves a new customer under a freshly generated, unique 6-digit meter
-     * number, and reserves their login row in the same transaction.
+     * Saves a new customer under the meter number the admin typed (the number
+     * printed on the physical meter), reserves their login, and sets up their
+     * meter, all in one transaction: either everything is saved or nothing is,
+     * so a failure can never leave a customer without a meter. Meter numbers
+     * are unique. The meter's serial is the meter number, which meter photos
+     * are checked against.
      */
-    public Customer create(Customer draft) throws SQLException {
+    public Customer create(Customer draft, Meter settings) throws SQLException {
         Validation.customer(draft);
-        for (int attempt = 0; attempt < METER_NUMBER_ATTEMPTS; attempt++) {
-            Customer customer = draft.withMeterNo(newMeterNumber());
-            try {
-                boolean saved = Database.inTransaction(c -> {
-                    CustomerDao customers = new CustomerDao(c);
-                    if (customers.exists(customer.meterNo())) {
-                        return false;
-                    }
-                    customers.insert(customer);
-                    new UserDao(c).insertCustomerPlaceholder(customer.meterNo(), customer.name());
-                    return true;
-                });
-                if (saved) {
-                    return customer;
-                }
-            } catch (SQLException e) {
-                if (!Database.isUniqueViolation(e)) {
-                    throw e;
-                }
-                // Another admin took the same number at the same moment; try a new one.
-            }
+        Customer customer = draft.withMeterNo(Validation.meterNumber(draft.meterNo()));
+        Meter meter = settings == null ? null : new Meter(customer.meterNo(), settings.meterType(), settings.billType(),
+                Meter.DEFAULT_BILLING_DAYS, settings.sanctionedLoadKw(), customer.meterNo());
+        if (meter != null) {
+            validateMeter(meter);
         }
-        throw new AppException("Couldn't generate a unique meter number. Please try again.");
+        try {
+            Database.inTransaction(c -> {
+                CustomerDao customers = new CustomerDao(c);
+                if (customers.exists(customer.meterNo())) {
+                    throw new AppException("Meter number " + customer.meterNo() + " is already registered to another customer. "
+                            + "Check the number on the meter.");
+                }
+                MeterDao meters = new MeterDao(c);
+                String owner = meters.serialOwner(customer.meterNo());
+                if (owner != null) {
+                    throw new AppException("Meter number " + customer.meterNo() + " is already on file for customer " + owner
+                            + ". Check the number on the meter.");
+                }
+                customers.insert(customer);
+                new UserDao(c).insertCustomerPlaceholder(customer.meterNo(), customer.name());
+                if (meter != null) {
+                    meters.save(meter);
+                }
+                return null;
+            });
+        } catch (SQLException e) {
+            if (Database.isUniqueViolation(e)) {
+                throw new AppException("Meter number " + customer.meterNo() + " is already registered to another customer.");
+            }
+            throw e;
+        }
+        return customer;
     }
 
     public void updateContact(Customer customer) throws SQLException {
@@ -75,26 +91,39 @@ public class CustomerService {
     }
 
     public void saveMeter(Meter meter) throws SQLException {
+        validateMeter(meter);
+        Database.withConnection(c -> {
+            if (!new CustomerDao(c).exists(meter.meterNo())) {
+                throw new AppException("No customer has meter number " + meter.meterNo() + ".");
+            }
+            try {
+                new MeterDao(c).save(meter);
+            } catch (SQLException e) {
+                if (Database.isUniqueViolation(e)) {
+                    throw new AppException("Another customer's meter already has the number " + meter.serialNo().trim() + ".");
+                }
+                throw e;
+            }
+            return null;
+        });
+    }
+
+    private static void validateMeter(Meter meter) {
         if (meter.billType() == null || !Meter.TYPES.contains(meter.meterType())) {
             throw new AppException("Choose a meter type and a bill type.");
         }
         if (meter.days() <= 0) {
             throw new AppException("Billing days must be positive.");
         }
+        if (meter.serialNo() != null && !meter.serialNo().isBlank()) {
+            int length = MeterPhotoReader.normalizeSerial(meter.serialNo()).length();
+            if (length < 4 || length > 20 || meter.serialNo().trim().length() > 30) {
+                throw new AppException("Enter the meter's serial exactly as printed on it, e.g. E-756216.");
+            }
+        }
         if (meter.sanctionedLoadKw() != null && (meter.sanctionedLoadKw().signum() <= 0
                 || meter.sanctionedLoadKw().compareTo(Meter.MAX_LOAD_KW) > 0)) {
             throw new AppException("The sanctioned load must be between 0.1 and " + Meter.MAX_LOAD_KW + " kW.");
         }
-        Database.withConnection(c -> {
-            if (!new CustomerDao(c).exists(meter.meterNo())) {
-                throw new AppException("No customer has meter number " + meter.meterNo() + ".");
-            }
-            new MeterDao(c).save(meter);
-            return null;
-        });
-    }
-
-    private static String newMeterNumber() {
-        return String.valueOf(100_000 + RANDOM.nextInt(900_000));
     }
 }

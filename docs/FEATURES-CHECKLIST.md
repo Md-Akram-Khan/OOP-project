@@ -4,7 +4,7 @@ Features from the three research PDFs, and whether they are in the app.
 
 **Key:** ✅ Integrated · 🟡 Partly integrated · ❌ Not integrated (reason given)
 
-**Summary:** 15 integrated · 2 partly integrated · 11 not integrated
+**Summary:** 17 integrated · 2 partly integrated · 11 not integrated (including your two proposed features: meter photo readings and new meter sign-up)
 
 The feature codes (C1–C10, A1–A10, L1–L8) are the ones used in *Electricity Billing App Research & Feature Blueprint*.
 
@@ -29,6 +29,8 @@ The feature codes (C1–C10, A1–A10, L1–L8) are the ones used in *Electricit
 | 13 | **Admin reports** | C9 | Shows billed vs collected this year, the collection rate, arrears by age (1–30, 31–60, 61–90, 90+ days), collection rate per month, and the top defaulters. Bills can be exported to CSV for Excel, with protection against spreadsheet formula injection. | Arrears aging is how distributors chase unpaid bills. |
 | 14 | **Audit log** | C10 | Every change is recorded with who made it and when: customer, meter, bill, payment (admin or SSLCommerz), complaint, and admin sign-ins. Entries are read-only. | People need to be able to trust a system that handles money. |
 | 15 | **Tariff page** | C4 | Admins can see every plan's slabs, demand charge, VAT, late fee, meter rent and source. | BERC changes rates every year or two, so they must be easy to check. |
+| 16 | **Meter photo readings** (proposed by you) | — | The admin uploads a photo of the meter. The server reads the LCD (seven-segment digits), or the number wheels of an older electromechanical meter, and checks the meter's serial number in the photo against the one on file, offline in plain Java. Readings can't be typed. The photo is stored with the bill; the same photo can't be reused; the previous reading always comes from the last bill. | Stops arbitrary or wrong readings being keyed in, the cause of cases like the Magura bill. Customers can see the photo behind their bill. |
+| 17 | **New meter sign-up and applications** (proposed by you) | — | "I need a new meter" sign-up: phone OTP (demo mode shows the code; real SMS via a gateway URL in .env), NID card checked against a dummy NID database from photos of both sides (the front's number, name and date of birth must match one record; one account per NID), then an Applicant account that applies for a meter. Admins review, approve/reject with a note, and connect the installed meter, which creates the customer and converts the login. | Most Bangladeshi households still apply for connections in person. Verified online applications save trips, and the NID check mirrors the documents utilities ask for. The NID check is simulated: it can't prove a card is genuine. |
 
 ## Partly integrated 🟡
 

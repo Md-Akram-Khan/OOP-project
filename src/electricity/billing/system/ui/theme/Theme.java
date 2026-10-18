@@ -119,6 +119,28 @@ public final class Theme {
         return new Font(FlatInterFont.FAMILY, Font.BOLD, 1).deriveFont(size);
     }
 
+    /**
+     * A font that has Bangla letters (Inter doesn't), for names and addresses
+     * from the NID records: Nirmala UI on Windows, else any installed font
+     * that can show them.
+     */
+    public static Font bangla(float size) {
+        if (banglaFamily == null) {
+            banglaFamily = "Dialog";
+            String sample = "নাম";
+            for (String family : new String[] {"Nirmala UI", "Noto Sans Bengali", "Vrinda", "Shonar Bangla", "Kalpurush"}) {
+                Font f = new Font(family, Font.PLAIN, 12);
+                if (f.getFamily().equals(family) && f.canDisplayUpTo(sample) == -1) {
+                    banglaFamily = family;
+                    break;
+                }
+            }
+        }
+        return new Font(banglaFamily, Font.PLAIN, 1).deriveFont(size);
+    }
+
+    private static String banglaFamily;
+
     // ---- Installing and switching -----------------------------------------
 
     /** Installs the theme, using the mode the user picked last time. */

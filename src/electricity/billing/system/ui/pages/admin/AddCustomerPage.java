@@ -41,6 +41,7 @@ public class AddCustomerPage extends Page {
     private final Stepper stepper = new Stepper("Customer details", "Meter set-up", "Done");
     private final FadeHost host = new FadeHost();
 
+    private final Field meterNo = Field.text("Meter number", "Exactly as printed on the meter, e.g. 4401987", Glyph.HASH);
     private final Field name = Field.text("Full name", "e.g. Ayesha Rahman", Glyph.USER);
     private final Field email = Field.text("Email", "name@example.com", Glyph.MAIL);
     private final Field phone = Field.text("Phone", "Mobile number", Glyph.PHONE);
@@ -48,6 +49,7 @@ public class AddCustomerPage extends Page {
     private final Field city = Field.text("City", "City", Glyph.HOME);
     private final Field state = Field.text("State / division", "State", Glyph.HOME);
     private final Txt detailsError = new Txt(" ", Theme.regular(13), () -> Theme.DANGER).wrap(620);
+    private final Txt meterError = new Txt(" ", Theme.regular(13), () -> Theme.DANGER).wrap(620);
 
     private final List<ChoiceCard> meterCards;
     private int meterType;
@@ -73,9 +75,11 @@ public class AddCustomerPage extends Page {
         Btn next = new Btn("Continue", Glyph.ARROW_RIGHT, Btn.Style.PRIMARY).trailingIcon();
         next.addActionListener(e -> toMeterStep());
         detailsError.setVisible(false);
+        meterError.setVisible(false);
         details = Ui.vbox(18,
-                Ui.vbox(4, Txt.h2("Who is the customer?"), Txt.small("They'll use this email to claim their account.")),
-                Ui.grid(2, 20, 6, name, email, phone, address, city, state),
+                Ui.vbox(4, Txt.h2("Who is the customer?"),
+                        Txt.small("Type the meter number printed on their meter. They'll use it with this email to claim their account.")),
+                Ui.grid(2, 20, 6, meterNo, name, email, phone, address, city, state),
                 detailsError,
                 Ui.hbox(0, Ui.glue(), next));
 
@@ -100,8 +104,10 @@ public class AddCustomerPage extends Page {
                 Txt.caps("Meter type"), meterRow,
                 Txt.caps("Customer category"), tariff, tariffNote,
                 Ui.width(load, 260),
+                Txt.small("Bills are made from a photo of the meter, which must show this meter number.").wrap(560),
                 Txt.small("The demand charge is the sanctioned load × the tariff's rate per kW. A typical home is 1–3 kW. "
                         + "Bills cover 30 days and are due 15 days after the meter is read.").wrap(560),
+                meterError,
                 Ui.hbox(10, back, Ui.glue(), createBtn));
 
         // Step 3: done
@@ -141,11 +147,12 @@ public class AddCustomerPage extends Page {
     }
 
     private Customer draft() {
-        return new Customer(null, name.value(), address.value(), city.value(), state.value(), email.value(), phone.value());
+        return new Customer(meterNo.value(), name.value(), address.value(), city.value(), state.value(), email.value(), phone.value());
     }
 
     private void toMeterStep() {
         try {
+            Validation.meterNumber(meterNo.value());
             Validation.customer(draft());
         } catch (AppException e) {
             detailsError.setText(e.getMessage());
@@ -180,26 +187,28 @@ public class AddCustomerPage extends Page {
             return;
         }
         createBtn.setBusy(true, "Creating…");
-        Tasks.run(() -> {
-            Customer saved = app.customers.create(customer);
-            app.customers.saveMeter(new Meter(saved.meterNo(), type, billType, Meter.DEFAULT_BILLING_DAYS, loadKw));
-            return saved;
-        }, saved -> {
+        meterError.setVisible(false);
+        // Customer and meter are saved together: if anything fails, nothing is saved and the admin can simply retry.
+        Tasks.run(() -> app.customers.create(customer, type, billType, loadKw), saved -> {
             createBtn.setBusy(false, null);
             createdMeter = saved.meterNo();
             meterNumber.setText(saved.meterNo());
-            doneText.setText("Share this meter number with " + saved.name()
-                    + ". They'll use it with their email to create their account.");
+            doneText.setText(saved.name() + " is set up on meter " + saved.meterNo()
+                    + ". They'll use this meter number with their email to create their account.");
             showStep(2);
             check.play();
         }, error -> {
             createBtn.setBusy(false, null);
-            Toast.error(this, Tasks.message(error));
+            String message = Tasks.message(error);
+            meterError.setText(message);
+            meterError.setVisible(true);
+            meter.revalidate();
+            Toast.error(this, message);
         });
     }
 
     private void reset() {
-        for (Field f : new Field[] {name, email, phone, address, city, state}) {
+        for (Field f : new Field[] {meterNo, name, email, phone, address, city, state}) {
             f.setValue("");
         }
         pickMeter(0);
@@ -208,6 +217,7 @@ public class AddCustomerPage extends Page {
         load.setError(null);
         createdMeter = null;
         detailsError.setVisible(false);
+        meterError.setVisible(false);
         showStep(0);
     }
 }

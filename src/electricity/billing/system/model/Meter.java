@@ -8,8 +8,11 @@ import java.util.List;
  *
  * @param sanctionedLoadKw the load the connection is approved for; the monthly
  *                         demand charge is this many kW times the tariff's rate
+ * @param serialNo         the serial printed on the physical meter (e.g. "E-756216");
+ *                         a meter photo must show it before a bill can be made
  */
-public record Meter(String meterNo, String meterType, BillType billType, int days, BigDecimal sanctionedLoadKw) {
+public record Meter(String meterNo, String meterType, BillType billType, int days, BigDecimal sanctionedLoadKw,
+        String serialNo) {
 
     public static final int DEFAULT_BILLING_DAYS = 30;
     public static final BigDecimal DEFAULT_LOAD_KW = new BigDecimal("2.00");

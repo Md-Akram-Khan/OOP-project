@@ -93,7 +93,7 @@ public class MyBillsPage extends Page {
             long late = list.stream().filter(b -> b.isOverdue(today)).count();
             summary.setText(list.size() + (list.size() == 1 ? " bill" : " bills") + "  ·  " + Fmt.money(open) + " outstanding"
                     + (late == 0 ? "" : "  ·  " + late + " overdue"));
-            pay.setVisible(list.stream().anyMatch(b -> b.status() == BillStatus.NOT_PAID));
+            pay.setVisible(list.stream().anyMatch(b -> b.status() != BillStatus.PAID));
             states.show(content, list.isEmpty() ? "empty" : "table");
         });
     }

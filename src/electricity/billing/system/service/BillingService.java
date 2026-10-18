@@ -12,6 +12,7 @@ import electricity.billing.system.db.BillDao;
 import electricity.billing.system.db.CustomerDao;
 import electricity.billing.system.db.Database;
 import electricity.billing.system.db.MeterDao;
+import electricity.billing.system.db.MeterPhotoDao;
 import electricity.billing.system.db.NotificationDao;
 import electricity.billing.system.db.TariffDao;
 import electricity.billing.system.model.Bill;
@@ -24,15 +25,23 @@ import electricity.billing.system.model.BillType;
 import electricity.billing.system.model.Customer;
 import electricity.billing.system.model.Meter;
 import electricity.billing.system.model.Months;
+import electricity.billing.system.meterphoto.MeterPhotoReader;
 import electricity.billing.system.model.Notification;
+import electricity.billing.system.model.PhotoReading;
 import electricity.billing.system.model.TariffPlan;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** Pricing meter readings with the BERC tariff, and tracking bills until they're paid. */
@@ -44,14 +53,24 @@ public class BillingService {
     }
 
     /**
-     * Prices a meter reading and saves the bill. One bill per meter per month.
-     * If the bill checker has concerns, the bill is only saved once the admin
-     * has seen them ({@code acknowledgeWarnings}).
+     * Makes a bill from a photo of the meter. The server reads the current
+     * reading from the photo and checks the meter's serial; the admin never
+     * types a reading. The photo is kept with the bill as evidence, and the same
+     * photo can't be used twice. One bill per meter per month. If the bill
+     * checker has concerns, the bill is only saved once the admin has seen them
+     * ({@code acknowledgeWarnings}).
      */
-    public Bill createBill(String meterNo, String month, int year, Integer previousReading, int currentReading,
-            boolean acknowledgeWarnings) throws SQLException {
+    public Bill createBill(String month, int year, Integer previousReading, byte[] photo, String expectedMeterNo,
+            boolean acknowledgeWarnings, String uploadedBy) throws SQLException {
+        String sha = sha256(photo);
+        PhotoReading read = readPhoto(photo, sha);
+        String meterNo = read.meterNo();
+        if (expectedMeterNo != null && !expectedMeterNo.isBlank() && !expectedMeterNo.equals(meterNo)) {
+            throw new AppException("This photo now reads as meter " + meterNo + ", not " + expectedMeterNo
+                    + " as shown before. Nothing was saved; check the photo and try again.");
+        }
         return Database.inTransaction(c -> {
-            Priced p = price(c, meterNo, month, year, previousReading, currentReading);
+            Priced p = price(c, meterNo, month, year, previousReading, read.reading(), read.note());
             if (!p.warnings().isEmpty() && !acknowledgeWarnings) {
                 throw new AppException("Please review this bill before saving it:\n• " + String.join("\n• ", p.warnings()));
             }
@@ -67,19 +86,87 @@ public class BillingService {
                 }
                 throw e;
             }
+            try {
+                new MeterPhotoDao(c).insert(meterNo, year, month, photo, contentType(photo), sha, read.displayText(),
+                        read.numberSeen(), uploadedBy);
+            } catch (SQLException e) {
+                if (Database.isUniqueViolation(e)) {
+                    throw new AppException(PHOTO_REUSED);
+                }
+                throw e;
+            }
             notifyNewBill(c, bill, p);
             return bill;
         });
     }
 
-    /** Prices a reading without saving anything, for the live preview. */
-    public Api.BillPreview preview(String meterNo, String month, int year, Integer previousReading, int currentReading)
-            throws SQLException {
+    /**
+     * Works out which meter a photo shows and what the bill would be, without
+     * saving anything. For a meter with no reading on file, the admin is asked
+     * for the previous reading first ({@code needsPreviousReading}).
+     */
+    public Api.BillPreview preview(String month, int year, Integer previousReading, byte[] photo) throws SQLException {
+        PhotoReading read = readPhoto(photo, sha256(photo));
+        String meterNo = read.meterNo();
         return Database.withConnection(c -> {
-            Priced p = price(c, meterNo, month, year, previousReading, currentReading);
-            return new Api.BillPreview(p.meter().billType(), p.plan().name(), p.previous(), p.current(), p.breakdown(),
+            Customer customer = requireCustomer(c, meterNo);
+            Meter meter = new MeterDao(c).findOrDefault(meterNo);
+            Optional<Bill> last = new BillDao(c).lastReading(meterNo);
+            String lastPeriod = last.map(b -> b.month() + " " + b.year()).orElse(null);
+            if (last.isEmpty() && previousReading == null) {
+                TariffPlan plan = new TariffDao(c).forMonth(meter.billType(), Dates.monthStart(month, year));
+                return new Api.BillPreview(meterNo, customer.name(), meter.billType(), meter.loadKw(), plan.name(), null, null,
+                        true, read.reading(), read, null, null, List.of(), null);
+            }
+            Priced p = price(c, meterNo, month, year, previousReading, read.reading(), read.note());
+            return new Api.BillPreview(meterNo, customer.name(), p.meter().billType(), p.meter().loadKw(), p.plan().name(),
+                    p.previous(), lastPeriod, false, p.current(), read, p.breakdown(),
                     SlabGuard.position(p.breakdown().units(), p.plan()), p.warnings(), p.dueDate());
         });
+    }
+
+    /** The photo a bill was made from. */
+    public Api.MeterPhoto photo(String meterNo, String month, int year) throws SQLException {
+        MeterPhotoDao.StoredPhoto stored = Database.withConnection(c -> new MeterPhotoDao(c).find(meterNo, month, year))
+                .orElseThrow(() -> new AppException("There's no meter photo for this bill. Bills made before photo "
+                        + "readings were introduced don't have one."));
+        return new Api.MeterPhoto(Base64.getEncoder().encodeToString(stored.image()), stored.contentType(),
+                stored.displayText(), stored.uploadedBy(), stored.uploadedAt());
+    }
+
+    /**
+     * Checks the photo hasn't been used before, then reads it and identifies the
+     * meter among every meter on file. The image work runs outside any database
+     * connection.
+     */
+    private PhotoReading readPhoto(byte[] photo, String sha) throws SQLException {
+        Map<String, String> printed = Database.withConnection(c -> {
+            if (new MeterPhotoDao(c).shaUsed(sha)) {
+                throw new AppException(PHOTO_REUSED);
+            }
+            return new MeterDao(c).printedNumbers();
+        });
+        if (printed.isEmpty()) {
+            throw new AppException("No customer has a meter number on file yet. Add customers first.");
+        }
+        return MeterPhotoReader.identify(photo, printed);
+    }
+
+    private static final String PHOTO_REUSED = "This photo has already been used for a bill. Take a new photo of the meter.";
+
+    private static String sha256(byte[] data) {
+        if (data == null) {
+            throw new AppException("Upload a photo of the meter.");
+        }
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String contentType(byte[] data) {
+        return data.length > 3 && (data[0] & 0xFF) == 0x89 && data[1] == 'P' && data[2] == 'N' ? "image/png" : "image/jpeg";
     }
 
     /** The meter's last reading, so the admin only has to type today's. */
@@ -90,7 +177,8 @@ public class BillingService {
             TariffPlan plan = new TariffDao(c).forMonth(meter.billType(), Dates.today().withDayOfMonth(1));
             Optional<Bill> last = new BillDao(c).lastReading(meterNo);
             return new Api.LastReading(meterNo, last.map(Bill::currentReading).orElse(null),
-                    last.map(b -> b.month() + " " + b.year()).orElse(null), meter.billType(), meter.loadKw(), plan.name());
+                    last.map(b -> b.month() + " " + b.year()).orElse(null), meter.billType(), meter.loadKw(), plan.name(),
+                    meter.meterType(), meter.serialNo());
         });
     }
 
@@ -141,30 +229,6 @@ public class BillingService {
         });
     }
 
-    /** Customer says they have paid. The bill waits for an admin to confirm it. */
-    public void submitPayment(String meterNo, String month, int year) throws SQLException {
-        int updated = Database.withConnection(c -> new BillDao(c)
-                .updateStatus(meterNo, month, year, BillStatus.PENDING, BillStatus.NOT_PAID));
-        if (updated == 0) {
-            throw new AppException("There's no unpaid bill for " + month + " " + year + ".");
-        }
-    }
-
-    /** Admin confirms a payment, whether submitted online or paid in person. */
-    public Bill confirmPayment(String meterNo, String month, int year) throws SQLException {
-        return Database.inTransaction(c -> {
-            BillDao bills = new BillDao(c);
-            int updated = bills.updateStatus(meterNo, month, year, BillStatus.PAID, BillStatus.NOT_PAID, BillStatus.PENDING);
-            if (updated == 0) {
-                throw new AppException("That bill is already marked as paid.");
-            }
-            Bill bill = bills.find(meterNo, month, year).orElseThrow();
-            new NotificationDao(c).insert(meterNo, Notification.Kind.PAYMENT, "Payment received for " + month + " " + year,
-                    "Your " + month + " bill is now marked as paid. Thank you!");
-            return bill;
-        });
-    }
-
     public Optional<Bill> find(String meterNo, String month, int year) throws SQLException {
         return Database.withConnection(c -> new BillDao(c).find(meterNo, month, year));
     }
@@ -208,15 +272,18 @@ public class BillingService {
 
     // ---- Pricing ------------------------------------------------------------
 
-    private Priced price(Connection c, String meterNo, String month, int year, Integer previousReading, int currentReading)
-            throws SQLException {
+    private Priced price(Connection c, String meterNo, String month, int year, Integer previousReading, int currentReading,
+            String readingNote) throws SQLException {
         if (!Months.isValid(month)) {
             throw new AppException("Unknown month: " + month);
         }
         requireCustomer(c, meterNo);
         BillDao bills = new BillDao(c);
         Integer lastOnFile = bills.lastReading(meterNo).map(Bill::currentReading).orElse(null);
-        Integer previous = previousReading != null ? previousReading : lastOnFile;
+        if (lastOnFile != null && previousReading != null && !previousReading.equals(lastOnFile)) {
+            throw new AppException("The previous reading comes from the last bill (" + lastOnFile + ") and can't be changed.");
+        }
+        Integer previous = lastOnFile != null ? lastOnFile : previousReading;
         if (previous == null) {
             throw new AppException("Meter " + meterNo + " has no earlier reading on file. Enter the previous reading "
                     + "shown on the meter or the last paper bill.");
@@ -225,8 +292,8 @@ public class BillingService {
             throw new AppException("Meter readings can't be negative.");
         }
         if (currentReading < previous) {
-            throw new AppException("The current reading (" + currentReading + ") is lower than the previous reading ("
-                    + previous + "). If the meter was replaced, enter the new meter's starting reading as the previous reading.");
+            throw new AppException("The reading in the photo (" + currentReading + ") is lower than the previous reading ("
+                    + previous + "). Check it's the right meter and a current photo.");
         }
         Meter meter = new MeterDao(c).findOrDefault(meterNo);
         TariffPlan plan = new TariffDao(c).forMonth(meter.billType(), Dates.monthStart(month, year));
@@ -234,7 +301,11 @@ public class BillingService {
         BillBreakdown breakdown = BillCalculator.calculate(units, meter.loadKw(), plan);
         List<Bill> history = bills.search(meterNo, null, null).stream()
                 .filter(b -> !(b.month().equals(month) && b.year() == year)).toList();
-        List<String> warnings = BillChecker.check(meter.billType(), units, previousReading, lastOnFile, breakdown, history);
+        List<String> warnings = new ArrayList<>();
+        if (readingNote != null) {
+            warnings.add(readingNote);
+        }
+        warnings.addAll(BillChecker.check(meter.billType(), units, previousReading, lastOnFile, breakdown, history));
         return new Priced(meter, plan, previous, currentReading, breakdown, warnings, Dates.today().plusDays(plan.dueDays()));
     }
 

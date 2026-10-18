@@ -3,7 +3,9 @@ package electricity.billing.system.model;
 /** Who an account belongs to. The label is what is stored in login."user" and shown in the UI. */
 public enum Role {
     ADMIN("Admin"),
-    CUSTOMER("Customer");
+    CUSTOMER("Customer"),
+    /** Phone and NID verified, applying for a meter; becomes a Customer once the meter is connected. */
+    APPLICANT("Applicant");
 
     private final String label;
 

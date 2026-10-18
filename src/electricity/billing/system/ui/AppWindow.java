@@ -1,6 +1,7 @@
 package electricity.billing.system.ui;
 
 import electricity.billing.system.model.Complaint;
+import electricity.billing.system.model.MeterApplication;
 import electricity.billing.system.model.UserAccount;
 import electricity.billing.system.ui.components.Tasks;
 import electricity.billing.system.ui.components.FadeHost;
@@ -13,9 +14,12 @@ import electricity.billing.system.ui.pages.admin.CalculateBillPage;
 import electricity.billing.system.ui.pages.admin.ComplaintsPage;
 import electricity.billing.system.ui.pages.admin.CustomersPage;
 import electricity.billing.system.ui.pages.admin.DashboardPage;
+import electricity.billing.system.ui.pages.admin.MeterApplicationsPage;
 import electricity.billing.system.ui.pages.admin.ReportsPage;
 import electricity.billing.system.ui.pages.admin.TariffsPage;
 import electricity.billing.system.ui.pages.admin.TeamPage;
+import electricity.billing.system.ui.pages.applicant.ApplicantHomePage;
+import electricity.billing.system.ui.pages.applicant.ApplyMeterPage;
 import electricity.billing.system.ui.pages.customer.HomePage;
 import electricity.billing.system.ui.pages.customer.MyBillsPage;
 import electricity.billing.system.ui.pages.customer.NotificationsPage;
@@ -72,12 +76,18 @@ public class AppWindow extends JFrame {
             add("calculate", "Calculate bill", Glyph.CALCULATOR, new CalculateBillPage(app));
             add("bills", "Bills & payments", Glyph.RECEIPT, new BillsPage(app));
             add("complaints", "Complaints", Glyph.MAIL, new ComplaintsPage(app));
+            add("applications", "Meter applications", Glyph.BOLT, new MeterApplicationsPage(app));
             sidebar.section("Insights");
             add("reports", "Reports", Glyph.TRENDING_UP, new ReportsPage(app));
             add("tariffs", "Tariffs", Glyph.GAUGE, new TariffsPage(app));
             add("audit", "Activity log", Glyph.CLOCK, new AuditLogPage(app));
             add("team", "Team", Glyph.SHIELD, new TeamPage(app));
             first = "dashboard";
+        } else if (account.isApplicant()) {
+            sidebar.section("New meter");
+            add("home", "My application", Glyph.HOME, new ApplicantHomePage(app));
+            add("apply", "Apply for a new meter", Glyph.PLUS, new ApplyMeterPage(app));
+            first = "home";
         } else {
             sidebar.section("Overview");
             add("home", "Home", Glyph.HOME, new HomePage(app));
@@ -111,12 +121,19 @@ public class AppWindow extends JFrame {
 
     /** Unread notifications (customers) or open complaints (admins), shown next to the menu item. */
     void refreshCounts() {
-        boolean admin = app.account().isAdmin();
-        Tasks.run(() -> admin
-                ? (int) app.support.complaints().stream().filter(c -> c.status() == Complaint.Status.OPEN).count()
-                : app.support.notifications().unread(),
-                count -> sidebar.setCount(admin ? "complaints" : "notifications", count),
-                error -> { });
+        UserAccount account = app.account();
+        if (account.isApplicant()) {
+            return;
+        }
+        if (account.isAdmin()) {
+            Tasks.run(() -> (int) app.support.complaints().stream().filter(c -> c.status() == Complaint.Status.OPEN).count(),
+                    count -> sidebar.setCount("complaints", count), error -> { });
+            Tasks.run(() -> (int) app.applications.list().stream()
+                    .filter(a -> a.status() == MeterApplication.Status.SUBMITTED).count(),
+                    count -> sidebar.setCount("applications", count), error -> { });
+        } else {
+            Tasks.run(() -> app.support.notifications().unread(), count -> sidebar.setCount("notifications", count), error -> { });
+        }
     }
 
     private void add(String key, String label, Glyph glyph, Page page) {
@@ -135,7 +152,7 @@ public class AppWindow extends JFrame {
         page.onShow(param);
     }
 
-    private void logout() {
+    void logout() {
         countTimer.stop();
         app.auth.logout();
         dispose();

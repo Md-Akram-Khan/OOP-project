@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer;
 import electricity.billing.system.common.Config;
 import electricity.billing.system.db.Database;
 import electricity.billing.system.service.PaymentService;
+import electricity.billing.system.service.SignupService;
 import electricity.billing.system.service.SslCommerzGateway;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -11,6 +12,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.logging.Logger;
 
 /**
  * The backend. It is the only program that holds the database password; the
@@ -23,6 +25,7 @@ import java.util.concurrent.Executors;
  */
 public final class ApiServer {
 
+    private static final Logger LOG = Logger.getLogger(ApiServer.class.getName());
     private static final int THREADS = 16;
 
     private final HttpServer http;
@@ -38,11 +41,18 @@ public final class ApiServer {
         Clock clock = Clock.systemUTC();
         SessionStore sessions = new SessionStore(clock);
         PaymentService payments = new PaymentService();
+        SignupService signup = new SignupService();
         Router router = new Router(sessions);
-        new Endpoints(sessions, new LoginThrottle(clock), payments, publicUrl).register(router);
+        new Endpoints(sessions, new LoginThrottle(clock), payments, signup, publicUrl).register(router);
 
         http.createContext("/api/", router);
         http.createContext("/pay/", new PaymentPages(payments));
+        http.createContext("/verify-phone", new PhoneVerifyPages(signup));
+        LOG.info("Phone verification for sign-up: " + switch (signup.phoneMode()) {
+            case "firebase" -> "Firebase Phone Authentication (project " + signup.firebase().projectId() + ")";
+            case "sms" -> "SMS gateway";
+            default -> "DEMO mode (codes shown on screen; set FIREBASE_* or SMS_* in .env to send real SMS)";
+        });
         http.setExecutor(executor);
     }
 
@@ -53,6 +63,7 @@ public final class ApiServer {
     public void stop() {
         http.stop(1);
         executor.shutdownNow();
+        Database.shutdown();
     }
 
     /** The port actually in use, which matters when started on port 0 (any free port). */

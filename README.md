@@ -26,13 +26,14 @@ Bills follow Bangladeshi rules: the **BERC slab tariff** (with the 0–50 unit l
 
 | Admin | Customer |
 |---|---|
-| Add customers: category (residential or commercial) and sanctioned load | Sign up with meter number + registered email |
-| Enter meter readings; bills are priced live, slab by slab | Home page with due date, overdue and high-usage alerts |
+| Add customers with the meter number printed on their meter, category and sanctioned load | Sign up with meter number + registered email |
+| **Bill from a meter photo**: the server reads the display and checks the meter number; readings can't be typed | Home page with due date, overdue and high-usage alerts |
 | **Bill checker** flags suspicious bills before they're saved | Bill history and a printable Bangladeshi-style invoice |
-| Bills with due dates, overdue filter and payment confirmation | **"Why is this bill different?"** explanation |
+| Bills with due dates and an overdue filter (paid only by verified online payment) | **"Why is this bill different?"** explanation |
 | Complaints: reply, set status, customer is notified | **Usage planner**: forecast from today's reading, slab alert, appliance calculator |
 | Reports: collection rate, arrears by age, top defaulters, CSV export | Pay online with SSLCommerz (bKash, Nagad, Rocket, cards); late fee added once overdue |
-| Tariffs page and an **activity (audit) log** | Notifications (new bill, payment, reminders) and complaints with ticket numbers |
+| Team: list of all admins with last sign-in, add admins; tariffs page and an **activity (audit) log** |
+| **Meter applications**: review, approve or reject, connect the installed meter | **New meter sign-up**: phone OTP, NID check (photos of both sides), then apply for a meter and follow its status | Notifications (new bill, payment, reminders) and complaints with ticket numbers |
 
 See [docs/FEATURES-CHECKLIST.md](docs/FEATURES-CHECKLIST.md) for which features from the research were integrated and which weren't.
 
@@ -63,6 +64,7 @@ See [docs/FEATURES-CHECKLIST.md](docs/FEATURES-CHECKLIST.md) for which features 
 │   ├── service/      Auth, Customer, Billing, Payment, Complaint, Notification, Audit services (server)
 │   ├── db/           Database + one DAO per table, PreparedStatement only   (server)
 │   ├── security/     PasswordHasher, salted PBKDF2                           (server)
+│   ├── meterphoto/   MeterPhotoReader: offline LCD and number-wheel readers + meter serial check  (server)
 │   ├── billing/      Tariff ← NormalTariff (slabs) / IndustrialTariff (flat); BillCalculator,
 │   │                 BillChecker, BillExplainer, SlabGuard                    (server)
 │   ├── model/        Customer, Bill, Meter, TariffPlan, Complaint, ... records (shared)
@@ -84,7 +86,7 @@ See [docs/FEATURES-CHECKLIST.md](docs/FEATURES-CHECKLIST.md) for which features 
 
 **Bill formula** (as on a Bangladeshi bill):
 
-1. Units = current reading − previous reading.
+1. Units = reading in the meter photo − previous reading (from the last bill).
 2. Energy charge, slab by slab (0–75 at Tk 5.26, 76–200 at Tk 8.50, …; 50 units or fewer in a month: all at the lifeline Tk 4.63).
 3. + Demand charge = sanctioned load (kW) × Tk 42.
 4. + 5% VAT on energy + demand charge.
@@ -105,7 +107,7 @@ The interface uses a custom design system called **Midnight Grid**, built on [Fl
   - a sliding sidebar highlight and cards that glow on hover
   - slide-in notifications, and a shake when a sign-in fails
 - **Screens:**
-  - **Admin:** dashboard with a billing chart, customer list with search, a 2-step "new customer" wizard, live bill preview as you type, bills with filters and one-click payment confirmation, and team management
+  - **Admin:** dashboard with a billing chart, customer list with search, a 2-step "new customer" wizard, live bill preview as you type, bills with filters, and a team list of every admin
   - **Customer:** home with the latest bill and a usage chart, bill history, a printable invoice, a 2-step pay flow, and an editable profile
 - **Icons:** all drawn in code (`ui/theme/Icons.java`), so they're sharp at any size.
 
@@ -117,7 +119,8 @@ The interface uses a custom design system called **Midnight Grid**, built on [Fl
    - [`database/schema.sql`](database/schema.sql) for a new database, or
    - [`database/migration-v2.sql`](database/migration-v2.sql) to upgrade a database made with the original schema, then
    - [`database/migration-v3-payments.sql`](database/migration-v3-payments.sql) to add online payments, then
-   - [`database/migration-v4-bd-billing.sql`](database/migration-v4-bd-billing.sql) to add BERC tariffs, meter readings, due dates, complaints, notifications and the audit log.
+   - [`database/migration-v4-bd-billing.sql`](database/migration-v4-bd-billing.sql) to add BERC tariffs, meter readings, due dates, complaints, notifications and the audit log, then
+   - [`database/migration-v5-meter-photos.sql`](database/migration-v5-meter-photos.sql) to add meter serial numbers and meter photos.
 2. **Settings.** Copy [`.env.example`](.env.example) to `.env` and fill it in. The server needs the `SUPABASE_*` values; the app only needs `EBS_API_URL`.
 3. **Start the server**, and leave it running:
    ```
@@ -143,15 +146,56 @@ By default the server only accepts connections from the same computer. To let ot
 2. Put it behind **HTTPS**, for example a hosting service that terminates TLS for you, or a reverse proxy. Without HTTPS, passwords and session tokens cross the network unencrypted.
 3. Give users only the client folder and an `.env` containing `EBS_API_URL=https://your-server`. Never give them the `SUPABASE_*` values.
 
+## Meter photo readings
+
+Admins don't choose the customer or type a reading. To make a bill, the admin just uploads a photo of the meter, and the **server** reads it:
+
+1. **Display:** finds the lit (green) LCD, straightens it, and reads the seven-segment digits by checking which segments are dark, e.g. `528.53` → 528 kWh. On an older electromechanical meter with no LCD, it reads the number wheels instead (light digits on dark drums). A last wheel caught between two numbers is read as the lowest possible digit, as meter readers do, and the bill preview warns the admin, who must acknowledge it before saving; a wheel in a red window counts tenths.
+2. **Which meter:** finds the printed meter number (e.g. `No: E-756216`) and checks it against every customer's meter number on file, character by character against font templates. Exactly one must match; that customer is billed.
+3. **Previous reading:** taken from that meter's last bill. Only for a meter's very first bill does the admin type it in.
+4. **No guessing:** if any digit or segment is unclear, the display can be read more than one way, or the meter number matches no customer (or more than one), the photo is refused with advice on retaking it.
+5. **Evidence:** the photo is stored with the bill. The same photo can't be used for two bills, and the previous reading always comes from the last bill. Admins and the customer can view the photo behind each bill.
+
+It all runs offline in plain Java, with no external service. Tested on the sample meter photo and variations of it (resized, blurred, darker, brighter, low contrast, heavy JPEG, tilted ±3°, noisy): the display was read correctly in 19/19 cases and the serial confirmed in 18/19, and a wrong serial was never accepted.
+
+**Limits:** it expects a backlit green LCD or dark number wheels with light digits, and a printed serial in a common sans-serif or narrow DIN-style font. Number groups printed apart on one line (`S81C   67062`) are read together. A grey (unlit) display, a handwritten or engraved serial, or a very blurred, angled or glare-covered photo is refused rather than read, and the admin retakes the photo. Someone determined could still photograph a different meter whose serial was altered to match; stored photos make that discoverable.
+
+## Signing up for a new meter
+
+The sign-up tab offers **I have a meter** (customers whose meter the office has registered) and **I need a new meter**:
+
+1. **Phone:** verified one of three ways, chosen on the server:
+   - **Firebase Phone Authentication** (real SMS from Google): the app opens a verification page in the browser (Firebase needs its reCAPTCHA check), Firebase texts the code, and the page sends Firebase's signed ID token back. The server checks the token's signature against Google's published keys, the project, the expiry and that it's for the same number. Set up below.
+   - **Your own SMS gateway** (`SMS_MODE=http`).
+   - **Demo mode** (default): the code is shown on screen.
+
+   In the last two, a 6-digit code is sent by SMS (or shown on screen in demo mode). It expires in 5 minutes; 5 wrong tries or a resend inside 30 seconds are refused, and codes are stored only as hashes. Without an SMS gateway (the default **demo mode**) nothing is texted and the code is shown on screen and in the server console; set `SMS_MODE=http` and `SMS_HTTP_URL` in `.env` to send real SMS (see `.env.example`).
+2. **NID:** the applicant uploads two photos: the **front** of their NID card (with the NID number) and the **back** (with the address and barcode). From the front, the server finds which record in the **dummy NID database** (`nid_registry`) the card's NID number belongs to, then checks that record's English name and date of birth are printed on the card too. The back photo is required but not read; it only has to be a photo other than the front. One account per NID.
+3. **Account:** a username and password create an **Applicant** account (sign in on the Customer side).
+
+Applicants see **My application** and **Apply for a new meter** (address, district, division, category, load, phase, ownership). Admins review them on **Meter applications** (Submitted → Under review → Approved / Rejected, with a note to the applicant). Once the meter is installed, **Connect meter** with its printed number creates the customer, sets up the meter and turns the applicant's login into their customer login, all in one step.
+
+**Important:** the NID records are manually stored sample data, not the Election Commission's database (which needs authorised access). Matching a card against them shows the card matches a stored record; it can't prove the card is genuine or that the applicant owns it. It's a simulated identity check for this project, not official authentication. On test photos the check passed straight, slightly tilted (±3°), phone-sized and compressed photos, refused blurred, very small and 5°-tilted ones with a "retake" message, and never matched a wrong record, a wrong name or a wrong date of birth. A phone photo of a real NID card (with its red date of birth) passed as well; the name and date are matched word by word along their printed line, since coloured print rarely reads whole at one contrast level.
+
+### Setting up Firebase Phone Authentication (real SMS to your phone)
+
+1. At [console.firebase.google.com](https://console.firebase.google.com), create a project.
+2. **Upgrade to the Blaze plan** (Spark, the free plan, can't send phone-auth SMS). A billing account with an international card is required; the first 10 SMS a day aren't billed, then about $0.19 per SMS to Bangladesh. Setting a budget alert in Google Cloud Billing is a good idea.
+3. **Authentication → Sign-in method → Phone → Enable.** Check **Authentication → Settings → Authorized domains** lists `localhost` (it does by default).
+4. **Project settings → General → Your apps → Add app → Web**, then copy `apiKey` and `projectId` into the server's `.env` as `FIREBASE_API_KEY` and `FIREBASE_PROJECT_ID` (see `.env.example`).
+5. Restart the server. Its start-up log says *Phone verification for sign-up: Firebase Phone Authentication*.
+
+Tip: under **Phone → Phone numbers for testing** you can add test numbers with fixed codes that never send an SMS, which is free.
+
 ## Payment flow
 
 Bills are paid online through **[SSLCommerz](https://developer.sslcommerz.com/doc/v4/)**, Bangladesh's payment gateway (cards, mobile banking and more):
 
 1. On **Pay bill**, the customer picks a bill and clicks **Pay with SSLCommerz**. The server records the payment, taking the amount from the bill (never from the app; after the due date, the amount including the late fee), and asks SSLCommerz for a secure checkout page, which opens in the browser.
 2. After paying, SSLCommerz sends the browser back to the server. The server doesn't trust that redirect: it asks SSLCommerz directly, server to server, whether the transaction is valid, and checks that the transaction ID, amount and currency match its own record.
-3. Only then is the bill marked **Paid**, automatically. The app is watching and shows the result straight away. Payments SSLCommerz flags as risky go to *Pending review* for an admin.
+3. Only then is the bill marked **Paid**, automatically. The app is watching and shows the result straight away. Payments SSLCommerz rates as risky are still paid (the money was verified), and the flag is kept in the activity log.
 
-Cash or other payments: the customer can report them, and an admin confirms them in **Bills & payments**.
+There is no manual confirmation: neither customers nor admins can mark a bill paid by hand. A bill becomes **Paid** only when the server has verified the payment with SSLCommerz.
 
 **Trying it for free (sandbox):** set the `SSLCOMMERZ_*` values in `.env` (see `.env.example`). The public test store `testbox` / `qwerty` works for learning, or [register your own sandbox store](https://developer.sslcommerz.com/registration/). On the sandbox checkout page, use test card **4111 1111 1111 1111**, expiry **12/26**, CVV **111**, OTP **111111**. No real money moves.
 
@@ -165,7 +209,9 @@ Cash or other payments: the customer can report them, and an admin confirms them
 - **"Your session has expired"**: sessions last 8 hours and end when the server restarts. Log out and log in again.
 - **"Too many failed logins"**: wait 15 minutes, or restart the server.
 - **"No tariff is set up"**: run `database/migration-v4-bd-billing.sql` in the Supabase SQL Editor.
-- **"has no earlier reading on file"**: the meter's first bill needs the previous reading typed in (from the meter or the last paper bill). After that it's filled in automatically.
+- **"has no earlier reading on file"**: the meter's first bill needs the previous reading typed in (from the meter's last paper bill). After that it's filled in from the last bill and can't be changed.
+- **"doesn't match any customer's meter"**: the customer may have been added before meter numbers were recorded. Select them on the Customers page and click **Meter no. on meter** to enter the number printed on their meter.
+- **"The meter number in the photo doesn't match"** / **"Couldn't find the meter's display"**: retake the photo straight on, close enough that the display and the "No:" serial fill most of the frame, in focus and without glare.
 
 ## Version 2 changes
 

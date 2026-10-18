@@ -11,6 +11,7 @@ import electricity.billing.system.ui.components.IconTile;
 import electricity.billing.system.ui.components.Txt;
 import electricity.billing.system.ui.components.Field;
 import electricity.billing.system.ui.components.InvoiceView;
+import electricity.billing.system.ui.components.PhotoDialog;
 import electricity.billing.system.ui.components.Tasks;
 import electricity.billing.system.ui.components.Toast;
 import electricity.billing.system.ui.components.Ui;
@@ -33,6 +34,7 @@ public class StatementPage extends Page {
     private final JComboBox<Integer> year = Field.combo();
     private final InvoiceView invoice = new InvoiceView();
     private final Card why = new Card(new BorderLayout(0, 14)).pad(24, 26, 24, 26);
+    private final Btn photoBtn = new Btn("Meter photo", Glyph.GAUGE, Btn.Style.SECONDARY);
     private boolean loading;
 
     public StatementPage(AppContext app) {
@@ -55,7 +57,8 @@ public class StatementPage extends Page {
                 Toast.error(this, "Printing failed: " + ex.getMessage());
             }
         });
-        add(header("Invoice", "Choose a month to view or print its bill.", month, year, print), BorderLayout.NORTH);
+        photoBtn.addActionListener(e -> showPhoto());
+        add(header("Invoice", "Choose a month to view or print its bill.", month, year, photoBtn, print), BorderLayout.NORTH);
 
         JPanel center = Ui.clear(new FlowLayout(FlowLayout.CENTER, 0, 0));
         center.add(invoice);
@@ -85,8 +88,17 @@ public class StatementPage extends Page {
         int y = (Integer) year.getSelectedItem();
         Tasks.run(this, () -> app.billing.myStatement(m, y), statement -> {
             invoice.show(statement, m, y);
+            photoBtn.setVisible(statement.bill() != null && statement.bill().currentReading() != null);
             explain(statement.explanation());
         });
+    }
+
+    /** The photo of the meter this bill's reading came from. */
+    private void showPhoto() {
+        String m = (String) month.getSelectedItem();
+        int y = (Integer) year.getSelectedItem();
+        Tasks.run(this, () -> app.billing.photo(null, m, y),
+                photo -> PhotoDialog.show(this, "Meter photo · " + m + " " + y, photo));
     }
 
     /** "Why is this bill different?": the change since the last bill, split into its causes. */

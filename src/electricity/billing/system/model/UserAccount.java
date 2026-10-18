@@ -6,4 +6,8 @@ public record UserAccount(String username, String name, Role role, String meterN
     public boolean isAdmin() {
         return role == Role.ADMIN;
     }
+
+    public boolean isApplicant() {
+        return role == Role.APPLICANT;
+    }
 }

@@ -28,10 +28,10 @@ Status of every issue found in the project review, plus a few more found while f
 | 9 | Closing windows never exited the app (JVM kept running) | ✅ | Every window uses `DISPOSE_ON_CLOSE`. Closing the dashboard closes all its windows; Log out does the same. |
 | 10 | A new database connection on every query, never closed | ✅ | `Database.withConnection` / `inTransaction` with try-with-resources. One connection per action, always closed. |
 | 11 | Database calls froze the UI | ✅ | `BaseFrame.runAsync` runs database work on a `SwingWorker` and disables buttons meanwhile, which also stops double submits. |
-| 12 | Bill marked **Paid before any payment** | ✅ | New flow: customer pays on Paytm, clicks **I've Paid**, bill becomes **Pending Verification**, admin confirms in Deposit Details (**Mark Selected as Paid**). |
+| 12 | Bill marked **Paid before any payment** | ✅ | A bill turns **Paid** only when the server has verified an SSLCommerz payment with the gateway (transaction ID, amount and currency must match). Manual confirmation was removed: there's no "I've paid" button and no admin "mark as paid". |
 | 13 | Bills had **no year** (Jan 2025 and Jan 2026 collided) | ✅ | `year` column plus Year pickers in Calculate / Pay / Generate / Deposit. |
 | 14 | The same month could be billed twice; Generate Bill showed only the first | ✅ | Primary key `(meter_no, year, month)` and a friendly "already has a bill" message. |
-| 15 | Random meter numbers could repeat, and nothing enforced uniqueness | ✅ | `SecureRandom` 6-digit number, existence check, primary key and retry. The number is assigned on save. |
+| 15 | Random meter numbers could repeat, and nothing enforced uniqueness | ✅ | Meter numbers are no longer generated. The admin types the number printed on the physical meter (e.g. E-756216) when adding the customer; it's tidied (capitals, no spaces), format-checked and must be unique. |
 | 16 | Customer and login inserts weren't in a transaction | ✅ | `CustomerService.create` saves both in one transaction. |
 | 17 | Pay Bill kept showing the previous month's figures | ✅ | Clears immediately, shows "No bill for this month", ignores stale results. |
 | 18 | Calculate Bill didn't show the first customer's name and address | ✅ | Loads them as soon as the meter list arrives. |
@@ -82,7 +82,7 @@ Status of every issue found in the project review, plus a few more found while f
 | Database dry run: migration + every DAO, rolled back | ✅ 17 / 17 |
 | Rebuilt JAR, read-only run against the live migrated database | ✅ Admin, customers, meters, tax rates and bills all load |
 | API server end to end (real server + real client, throwaway database schema) | ✅ 36 / 36 |
-| Clicking through every window by hand | ❌ Not done: I can't operate the GUI. Please test login, signup, add customer, calculate, pay and confirm. |
+| Clicking through every window by hand | ❌ Not done: I can't operate the GUI. Every screen was rendered off-screen and reviewed; please still try login, signup, add customer, calculate and pay. |
 
 ## Project layout
 

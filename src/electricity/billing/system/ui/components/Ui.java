@@ -160,6 +160,43 @@ public final class Ui {
      * Centres a component; if the window is too small to show it whole, it
      * scrolls instead of squashing.
      */
+    /** Scrolls up and down only; the content always fits the visible width, so nothing hides under the scrollbar. */
+    public static JScrollPane vertical(Component content) {
+        class FitWidth extends JPanel implements javax.swing.Scrollable {
+            FitWidth() {
+                super(new java.awt.BorderLayout());
+                setOpaque(false);
+                add(content, java.awt.BorderLayout.NORTH);
+            }
+
+            @Override
+            public Dimension getPreferredScrollableViewportSize() {
+                return getPreferredSize();
+            }
+
+            @Override
+            public int getScrollableUnitIncrement(java.awt.Rectangle r, int o, int d) {
+                return 18;
+            }
+
+            @Override
+            public int getScrollableBlockIncrement(java.awt.Rectangle r, int o, int d) {
+                return 120;
+            }
+
+            @Override
+            public boolean getScrollableTracksViewportWidth() {
+                return true;
+            }
+
+            @Override
+            public boolean getScrollableTracksViewportHeight() {
+                return getParent() instanceof javax.swing.JViewport v && v.getHeight() >= getPreferredSize().height;
+            }
+        }
+        return scroll(new FitWidth());
+    }
+
     public static JScrollPane centered(Component content) {
         class Center extends JPanel implements javax.swing.Scrollable {
             Center() {

@@ -17,6 +17,10 @@ import java.util.Optional;
 final class Request {
 
     static final int MAX_BODY_BYTES = 64 * 1024;
+    /** Requests carrying a meter photo: an 8 MB image is about 11 MB as base64 text. */
+    static final int MAX_PHOTO_BODY_BYTES = 12 * 1024 * 1024;
+    /** Requests carrying two photos, such as both sides of an NID card. */
+    static final int MAX_TWO_PHOTO_BODY_BYTES = 2 * MAX_PHOTO_BODY_BYTES;
     private static final int MIN_YEAR = 2000;
     private static final int MAX_YEAR = 2100;
 
@@ -31,11 +35,16 @@ final class Request {
     }
 
     <T> T body(Class<T> type) throws IOException {
+        return body(type, MAX_BODY_BYTES);
+    }
+
+    /** The JSON body, allowing up to {@code maxBytes} (e.g. for photo uploads). */
+    <T> T body(Class<T> type, int maxBytes) throws IOException {
         byte[] bytes;
         try (InputStream in = exchange.getRequestBody()) {
-            bytes = in.readNBytes(MAX_BODY_BYTES + 1);
+            bytes = in.readNBytes(maxBytes + 1);
         }
-        if (bytes.length > MAX_BODY_BYTES) {
+        if (bytes.length > maxBytes) {
             throw ApiError.tooLarge();
         }
         try {
@@ -102,6 +111,26 @@ final class Request {
     UserAccount requireAdmin() {
         UserAccount user = requireUser();
         if (!user.isAdmin()) {
+            throw ApiError.forbidden();
+        }
+        return user;
+    }
+
+    /**
+     * An admin, or a customer with a meter. Applicants (no meter yet) are
+     * refused: endpoints that filter by "my meter" must never see a missing one.
+     */
+    UserAccount requireAdminOrCustomer() {
+        UserAccount user = requireUser();
+        if (!user.isAdmin() && user.meterNo() == null) {
+            throw ApiError.forbidden();
+        }
+        return user;
+    }
+
+    UserAccount requireApplicant() {
+        UserAccount user = requireUser();
+        if (!user.isApplicant()) {
             throw ApiError.forbidden();
         }
         return user;

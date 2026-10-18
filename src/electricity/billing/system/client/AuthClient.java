@@ -1,12 +1,18 @@
 package electricity.billing.system.client;
 
+import com.google.gson.reflect.TypeToken;
 import electricity.billing.system.common.Api;
 import electricity.billing.system.model.Role;
 import electricity.billing.system.model.UserAccount;
+import java.lang.reflect.Type;
+import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /** Logging in and out, and creating accounts. */
 public class AuthClient {
+
+    private static final Type ADMIN_LIST = new TypeToken<List<Api.AdminInfo>>() { }.getType();
 
     private final ApiClient api = ApiClient.get();
 
@@ -27,6 +33,49 @@ public class AuthClient {
             }
         });
         api.endSession();
+    }
+
+    // ---- New meter sign-up --------------------------------------------------
+
+    /** How the server verifies phone numbers: "firebase", "sms" or "demo". */
+    public String phoneMode() {
+        Api.PhoneMode mode = api.get("/api/signup/phone/mode", Api.PhoneMode.class);
+        return mode.mode();
+    }
+
+    /** Firebase: starts a verification to finish in the browser. */
+    public Api.PhoneSession startPhoneVerification(String phone) {
+        return api.post("/api/signup/phone/start", new Api.OtpRequest(phone), Api.PhoneSession.class);
+    }
+
+    public Api.PhoneSessionStatus phoneVerificationStatus(String session) {
+        return api.get(ApiClient.withQuery("/api/signup/phone/status", ApiClient.params("session", session)),
+                Api.PhoneSessionStatus.class);
+    }
+
+    /** Sends a one-time code to the phone. In demo mode the code comes back to show on screen. */
+    public Api.OtpSent sendOtp(String phone) {
+        return api.post("/api/signup/otp", new Api.OtpRequest(phone), Api.OtpSent.class);
+    }
+
+    public Api.PhoneVerified verifyOtp(String phone, String code) {
+        return api.post("/api/signup/otp/verify", new Api.OtpVerify(phone, code), Api.PhoneVerified.class);
+    }
+
+    /** Sends photos of both sides of the NID card; the front (with the number) is checked against the NID records. */
+    public Api.IdentityVerified verifyNid(String phoneToken, byte[] front, byte[] back) {
+        Base64.Encoder base64 = Base64.getEncoder();
+        return api.post("/api/signup/nid", new Api.NidCheckRequest(phoneToken, base64.encodeToString(front),
+                base64.encodeToString(back)), Api.IdentityVerified.class);
+    }
+
+    public void createApplicant(String identityToken, String username, char[] password) {
+        api.post("/api/signup/applicant", new Api.ApplicantSignup(identityToken, username, new String(password)), null);
+    }
+
+    /** Admin: every administrator, with their last sign-in. */
+    public List<Api.AdminInfo> admins() {
+        return api.get("/api/admins", ADMIN_LIST);
     }
 
     public boolean adminExists() {

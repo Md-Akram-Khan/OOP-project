@@ -46,8 +46,8 @@ INTER = LIB / "flatlaf-fonts-inter-4.1.jar"
 POSTGRES = LIB / "postgresql-42.7.8.jar"
 
 SHARED = ["common", "model"]
-CLIENT_FOLDERS = [".", "client", "ui", "ui/theme", "ui/components", "ui/pages/admin", "ui/pages/customer"] + SHARED
-SERVER_FOLDERS = ["server", "service", "db", "security", "billing"] + SHARED
+CLIENT_FOLDERS = [".", "client", "ui", "ui/theme", "ui/components", "ui/pages/admin", "ui/pages/customer", "ui/pages/applicant"] + SHARED
+SERVER_FOLDERS = ["server", "service", "db", "security", "billing", "meterphoto"] + SHARED
 DB_SETTINGS = ("SUPABASE_DB_URL", "SUPABASE_DB_USER", "SUPABASE_DB_PASSWORD")
 
 SERVER_START_TIMEOUT = 60

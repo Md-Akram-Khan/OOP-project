@@ -276,8 +276,7 @@ public class InvoiceView extends JComponent {
         g.fill(new java.awt.geom.Ellipse2D.Double(PAD + 12, y + 26, 7, 7));
         g.drawString(status.text(), PAD + 25, y + 34);
         String note = b.status() == BillStatus.PAID ? "Thank you — this bill is fully paid."
-                : b.status() == BillStatus.PENDING ? "Payment received, awaiting confirmation."
-                : overdue ? "Past the due date: the late fee now applies."
+                                : overdue ? "Past the due date: the late fee now applies."
                 : "Pay online with bKash, Nagad, Rocket or card from the Pay bill page.";
         text(g, note, Theme.regular(13), p.muted(), PAD, y + 66);
 

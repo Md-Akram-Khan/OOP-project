@@ -119,7 +119,7 @@ public class ReportsPage extends Page {
         }
         BigDecimal noDate = BigDecimal.ZERO;
         for (Bill b : bills) {
-            if (b.status() != BillStatus.NOT_PAID) {
+            if (b.status() == BillStatus.PAID) {
                 continue;
             }
             if (b.dueDate() == null) {

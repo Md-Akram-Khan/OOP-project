@@ -1,8 +1,10 @@
 package electricity.billing.system.model;
 
 /**
- * Lifecycle of a bill: a customer submits a payment (PENDING) and an admin
- * confirms it (PAID). A customer can never mark their own bill as paid.
+ * Lifecycle of a bill: NOT_PAID until SSLCommerz confirms an online payment,
+ * then PAID. Nobody marks a bill paid by hand. PENDING is only kept so bills
+ * saved by older versions (a customer's self-reported payment) still load;
+ * the app treats them as unpaid.
  */
 public enum BillStatus {
     NOT_PAID("Not Paid"),

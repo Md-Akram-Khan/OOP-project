@@ -13,6 +13,7 @@ import electricity.billing.system.ui.components.Btn;
 import electricity.billing.system.ui.components.Card;
 import electricity.billing.system.ui.components.DataTable;
 import electricity.billing.system.ui.components.EmptyState;
+import electricity.billing.system.ui.components.PhotoDialog;
 import electricity.billing.system.ui.components.Field;
 import electricity.billing.system.ui.components.Segmented;
 import electricity.billing.system.ui.components.Tasks;
@@ -34,10 +35,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import javax.swing.JComboBox;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 
-/** Every bill, filterable, with one-click payment confirmation. */
+/** Every bill, filterable. Bills turn Paid only when SSLCommerz confirms the payment. */
 public class BillsPage extends Page {
 
     private static final String ALL = "All";
@@ -46,9 +46,8 @@ public class BillsPage extends Page {
     private final JComboBox<String> meter = Field.combo();
     private final JComboBox<String> month = Field.combo();
     private final JComboBox<String> year = Field.combo();
-    private final Segmented status = new Segmented("All", "Unpaid", "Overdue", "In review", "Paid");
+    private final Segmented status = new Segmented("All", "Unpaid", "Overdue", "Paid");
     private final Txt summary = Txt.muted(" ");
-    private final Btn confirm = new Btn("Confirm payment", Glyph.CHECK, Btn.Style.SUCCESS);
     private final CardLayout states = new CardLayout();
     private final JPanel content = Ui.clear(states);
 
@@ -67,13 +66,13 @@ public class BillsPage extends Page {
                 Toast.error(this, "Printing failed: " + ex.getMessage());
             }
         });
-        confirm.setEnabled(false);
-        confirm.addActionListener(e -> confirmSelected());
 
         JPanel header = Ui.clear(new BorderLayout());
         header.add(Ui.vbox(6, Txt.h1("Bills & payments"), summary), BorderLayout.WEST);
         JPanel actions = Ui.clear(new CenterLayout());
-        actions.add(Ui.hbox(10, print, confirm));
+        Btn photo = new Btn("Meter photo", Glyph.GAUGE, Btn.Style.SECONDARY);
+        photo.addActionListener(e -> showPhoto());
+        actions.add(Ui.hbox(10, photo, print));
         header.add(actions, BorderLayout.EAST);
         add(header, BorderLayout.NORTH);
 
@@ -90,7 +89,7 @@ public class BillsPage extends Page {
             box.setPreferredSize(new Dimension(150, Field.INPUT_HEIGHT));
         }
         status.onChange(i -> applyFilters());
-        Ui.width(status, 470);
+        Ui.width(status, 400);
         JPanel filters = Ui.hbox(14, label("Meter", meter), label("Month", month), label("Year", year), Ui.glue(),
                 Ui.vbox(6, Txt.caps("Status"), status));
 
@@ -101,10 +100,6 @@ public class BillsPage extends Page {
         table.column(4, new DataTable.MoneyRenderer(), 130);
         table.getColumnModel().getColumn(5).setPreferredWidth(120);
         table.column(6, new DataTable.StatusRenderer(), 160);
-        table.getSelectionModel().addListSelectionListener(e -> {
-            Bill bill = selectedBill();
-            confirm.setEnabled(bill != null && bill.status() != BillStatus.PAID);
-        });
 
         Card tableCard = new Card(new BorderLayout()).pad(6, 6, 6, 6);
         tableCard.add(table.scroll(), BorderLayout.CENTER);
@@ -159,15 +154,14 @@ public class BillsPage extends Page {
         int filter = status.selectedIndex();
         BillStatus s = switch (filter) {
             case 1, 2 -> BillStatus.NOT_PAID;
-            case 3 -> BillStatus.PENDING;
-            case 4 -> BillStatus.PAID;
+            case 3 -> BillStatus.PAID;
             default -> null;
         };
         shown = all.stream()
                 .filter(b -> m == null || ALL.equals(m) || b.meterNo().equals(m))
                 .filter(b -> mo == null || ALL.equals(mo) || b.month().equals(mo))
                 .filter(b -> y == null || ALL.equals(y) || String.valueOf(b.year()).equals(y))
-                .filter(b -> s == null || b.status() == s)
+                .filter(b -> s == null || (s == BillStatus.PAID) == (b.status() == BillStatus.PAID))
                 .filter(b -> filter != 2 || b.isOverdue(today))
                 .collect(Collectors.toCollection(ArrayList::new));
         table.clear();
@@ -176,43 +170,21 @@ public class BillsPage extends Page {
                     Fmt.number(b.units()), b.amountDue(today), Fmt.date(b.dueDate()), Badge.Label.of(b, today));
         }
         BigDecimal sum = shown.stream().map(b -> b.amountDue(today)).reduce(BigDecimal.ZERO, BigDecimal::add);
-        long review = shown.stream().filter(b -> b.status() == BillStatus.PENDING).count();
         long overdue = shown.stream().filter(b -> b.isOverdue(today)).count();
         summary.setText(shown.size() + (shown.size() == 1 ? " bill" : " bills") + "  ·  " + Fmt.money(sum)
-                + " total  ·  " + overdue + " overdue  ·  " + review + " awaiting confirmation");
+                + " total  ·  " + overdue + " overdue");
         states.show(content, shown.isEmpty() ? "empty" : "table");
-        confirm.setEnabled(false);
     }
 
-    private Bill selectedBill() {
+    /** The photo of the meter the selected bill was read from. */
+    private void showPhoto() {
         int row = table.getSelectedRow();
-        return row < 0 ? null : shown.get(table.convertRowIndexToModel(row));
-    }
-
-    private void confirmSelected() {
-        Bill bill = selectedBill();
-        if (bill == null) {
+        if (row < 0) {
+            Toast.info(this, "Select a bill first.");
             return;
         }
-        String who = names.getOrDefault(bill.meterNo(), bill.meterNo());
-        int answer = JOptionPane.showConfirmDialog(this,
-                "Mark " + who + "'s " + Fmt.period(bill.month(), bill.year()) + " bill (" + Fmt.money(bill.amountDue(Dates.today()))
-                        + ") as paid?",
-                "Confirm payment", JOptionPane.YES_NO_OPTION);
-        if (answer != JOptionPane.YES_OPTION) {
-            return;
-        }
-        confirm.setBusy(true, "Confirming…");
-        Tasks.run(() -> {
-            app.billing.confirmPayment(bill.meterNo(), bill.month(), bill.year());
-            return null;
-        }, done -> {
-            confirm.setBusy(false, null);
-            Toast.success(this, "Payment confirmed for " + who + ".");
-            onShow(null);
-        }, error -> {
-            confirm.setBusy(false, null);
-            Toast.error(this, Tasks.message(error));
-        });
+        Bill bill = shown.get(table.convertRowIndexToModel(row));
+        Tasks.run(this, () -> app.billing.photo(bill.meterNo(), bill.month(), bill.year()), photo -> PhotoDialog.show(this,
+                "Meter photo · " + names.getOrDefault(bill.meterNo(), bill.meterNo()) + " · " + bill.month() + " " + bill.year(), photo));
     }
 }

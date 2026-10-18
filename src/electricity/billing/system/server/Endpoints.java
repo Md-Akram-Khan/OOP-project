@@ -7,8 +7,10 @@ import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.Complaint;
 import electricity.billing.system.model.Customer;
 import electricity.billing.system.model.Meter;
+import electricity.billing.system.model.MeterApplication;
 import electricity.billing.system.model.Months;
 import electricity.billing.system.model.UserAccount;
+import electricity.billing.system.service.ApplicationService;
 import electricity.billing.system.service.AuditService;
 import electricity.billing.system.service.AuthService;
 import electricity.billing.system.service.BillingService;
@@ -16,6 +18,8 @@ import electricity.billing.system.service.ComplaintService;
 import electricity.billing.system.service.CustomerService;
 import electricity.billing.system.service.NotificationService;
 import electricity.billing.system.service.PaymentService;
+import electricity.billing.system.service.SignupService;
+import java.util.Base64;
 
 /**
  * Every API endpoint and who may call it.
@@ -34,13 +38,16 @@ final class Endpoints {
     private final ComplaintService complaints = new ComplaintService();
     private final NotificationService notifications = new NotificationService();
     private final AuditService audit = new AuditService();
+    private final SignupService signup;
+    private final ApplicationService applications = new ApplicationService();
     private final PaymentService payments;
     private final String publicUrl;
     private final SessionStore sessions;
     private final LoginThrottle throttle;
 
-    Endpoints(SessionStore sessions, LoginThrottle throttle, PaymentService payments, String publicUrl) {
+    Endpoints(SessionStore sessions, LoginThrottle throttle, PaymentService payments, SignupService signup, String publicUrl) {
         this.sessions = sessions;
+        this.signup = signup;
         this.throttle = throttle;
         this.payments = payments;
         this.publicUrl = publicUrl;
@@ -63,6 +70,7 @@ final class Endpoints {
                     "Customer created their login");
             return null;
         });
+        router.add("GET", "/api/admins", r -> auth.admins(r.requireAdmin()));
         // Anonymous callers may only create the very first admin; AuthService enforces that.
         router.add("POST", "/api/admins", r -> {
             Api.CreateAdminRequest b = r.body(Api.CreateAdminRequest.class);
@@ -72,6 +80,62 @@ final class Endpoints {
             return null;
         });
 
+        // New meter sign-up: phone (OTP) -> NID -> applicant account. Each step needs the previous step's token.
+        router.add("GET", "/api/signup/phone/mode", r -> new Api.PhoneMode(signup.phoneMode()));
+        // Firebase: the app opens the returned page in the browser, then polls the status until Firebase has verified the phone.
+        router.add("POST", "/api/signup/phone/start", r -> signup.startBrowserVerification(r.body(Api.OtpRequest.class).phone(), publicUrl));
+        router.add("GET", "/api/signup/phone/status", r -> {
+            Api.PhoneVerified done = signup.browserVerificationResult(requireParam(r, "session"));
+            return new Api.PhoneSessionStatus(done != null, done == null ? null : done.phoneToken());
+        });
+        router.add("POST", "/api/signup/otp", r -> signup.sendCode(r.body(Api.OtpRequest.class).phone()));
+        router.add("POST", "/api/signup/otp/verify", r -> {
+            Api.OtpVerify b = r.body(Api.OtpVerify.class);
+            return signup.verifyCode(b.phone(), b.code());
+        });
+        router.add("POST", "/api/signup/nid", r -> {
+            Api.NidCheckRequest b = r.body(Api.NidCheckRequest.class, Request.MAX_TWO_PHOTO_BODY_BYTES);
+            return signup.verifyNid(b.phoneToken(), photo(b.photo(), "Upload a photo of the front of your NID card."),
+                    photo(b.backPhoto(), "Upload a photo of the back of your NID card."));
+        });
+        router.add("POST", "/api/signup/applicant", r -> {
+            Api.ApplicantSignup b = r.body(Api.ApplicantSignup.class);
+            signup.createAccount(b.identityToken(), text(b.username()), chars(b.password()));
+            audit.record(text(b.username()) + " (Applicant)", "APPLICANT_SIGNED_UP", text(b.username()),
+                    "Phone verified by OTP, NID checked against the NID records");
+            return null;
+        });
+
+        // Meter applications
+        router.add("GET", "/api/applicant/me", r -> applications.profile(r.requireApplicant()));
+        router.add("GET", "/api/applications", r -> {
+            UserAccount user = r.requireUser();
+            if (!user.isAdmin()) {
+                r.requireApplicant();
+            }
+            return applications.list(user);
+        });
+        router.add("POST", "/api/applications", r -> {
+            UserAccount me = r.requireApplicant();
+            MeterApplication saved = applications.submit(me, r.body(Api.NewApplication.class));
+            audit.record(me, "APPLICATION_SUBMITTED", saved.reference(), saved.district() + ", " + saved.billType().displayName()
+                    + ", " + saved.loadKw().stripTrailingZeros().toPlainString() + " kW");
+            return saved;
+        });
+        router.add("POST", "/api/applications/update", r -> {
+            UserAccount admin = r.requireAdmin();
+            MeterApplication saved = applications.update(r.body(Api.ApplicationUpdate.class));
+            audit.record(admin, "APPLICATION_UPDATED", saved.reference(), "Status: " + saved.status().label());
+            return saved;
+        });
+        router.add("POST", "/api/applications/connect", r -> {
+            UserAccount admin = r.requireAdmin();
+            MeterApplication saved = applications.connect(r.body(Api.ConnectMeter.class));
+            audit.record(admin, "METER_CONNECTED", saved.reference(), "Meter " + saved.meterNo() + " for " + saved.applicantName()
+                    + "; applicant account is now a customer account");
+            return saved;
+        });
+
         // Customers
         router.add("GET", "/api/customers", r -> {
             r.requireAdmin();
@@ -79,9 +143,15 @@ final class Endpoints {
         });
         router.add("POST", "/api/customers", r -> {
             UserAccount admin = r.requireAdmin();
-            Customer draft = r.body(Customer.class);
-            Customer saved = customers.create(trimmed(draft, null, draft.name()));
-            audit.record(admin, "CUSTOMER_CREATED", saved.meterNo(), saved.name() + ", " + saved.city());
+            Api.NewCustomerRequest b = r.body(Api.NewCustomerRequest.class);
+            Customer draft = trimmed(new Customer(b.meterNo(), b.name(), b.address(), b.city(), b.state(), b.email(), b.phone()),
+                    b.meterNo(), b.name());
+            Meter settings = b.meterType() == null ? null : new Meter(null, b.meterType(), b.billType(),
+                    Meter.DEFAULT_BILLING_DAYS, b.sanctionedLoadKw() == null ? Meter.DEFAULT_LOAD_KW : b.sanctionedLoadKw(), null);
+            Customer saved = customers.create(draft, settings);
+            audit.record(admin, "CUSTOMER_CREATED", saved.meterNo(), saved.name() + ", " + saved.city()
+                    + (settings == null ? "" : "; " + settings.meterType() + ", " + settings.billType().displayName() + ", "
+                    + settings.loadKw().stripTrailingZeros().toPlainString() + " kW"));
             return saved;
         });
         router.add("GET", "/api/customers/lookup", r -> {
@@ -115,10 +185,11 @@ final class Endpoints {
             Meter m = r.body(Meter.class);
             Meter meter = new Meter(text(m.meterNo()), m.meterType(), m.billType(),
                     m.days() > 0 ? m.days() : Meter.DEFAULT_BILLING_DAYS,
-                    m.sanctionedLoadKw() == null ? Meter.DEFAULT_LOAD_KW : m.sanctionedLoadKw());
+                    m.sanctionedLoadKw() == null ? Meter.DEFAULT_LOAD_KW : m.sanctionedLoadKw(), m.serialNo());
             customers.saveMeter(meter);
             audit.record(admin, "METER_SAVED", meter.meterNo(), meter.meterType() + ", " + meter.billType().displayName()
-                    + ", " + meter.loadKw().stripTrailingZeros().toPlainString() + " kW");
+                    + ", " + meter.loadKw().stripTrailingZeros().toPlainString() + " kW"
+                    + (meter.serialNo() == null ? "" : ", serial " + meter.serialNo()));
             return null;
         });
 
@@ -129,30 +200,40 @@ final class Endpoints {
         });
 
         // Bills
+        // Bills are made from a photo of the meter; the server reads the reading from it.
         router.add("POST", "/api/bills", r -> {
             UserAccount admin = r.requireAdmin();
-            Api.NewBillRequest b = r.body(Api.NewBillRequest.class);
-            Bill bill = billing.createBill(text(b.meterNo()), month(b.month()), Request.checkYear(b.year()),
-                    b.previousReading(), b.currentReading(), b.acknowledgeWarnings());
+            Api.NewBillRequest b = r.body(Api.NewBillRequest.class, Request.MAX_PHOTO_BODY_BYTES);
+            Bill bill = billing.createBill(month(b.month()), Request.checkYear(b.year()), b.previousReading(), photo(b.photo()),
+                    b.expectedMeterNo(), b.acknowledgeWarnings(), AuditService.actor(admin));
             audit.record(admin, "BILL_CREATED", bill.meterNo() + " " + bill.month() + " " + bill.year(),
-                    "Reading " + bill.previousReading() + " to " + bill.currentReading() + ", " + bill.units() + " units, "
-                            + Money.tk(bill.total()) + (bill.hasWarnings() ? "; saved despite " + bill.warnings().size()
-                            + " checker warning(s)" : ""));
+                    "Meter identified and read from photo: " + bill.previousReading() + " to " + bill.currentReading() + ", " + bill.units()
+                            + " units, " + Money.tk(bill.total()) + (bill.hasWarnings() ? "; saved despite "
+                            + bill.warnings().size() + " checker warning(s)" : ""));
             return bill;
         });
         router.add("POST", "/api/bills/preview", r -> {
             r.requireAdmin();
-            Api.PreviewRequest b = r.body(Api.PreviewRequest.class);
-            return billing.preview(text(b.meterNo()), month(b.month()), Request.checkYear(b.year()),
-                    b.previousReading(), b.currentReading());
+            Api.PreviewRequest b = r.body(Api.PreviewRequest.class, Request.MAX_PHOTO_BODY_BYTES);
+            return billing.preview(month(b.month()), Request.checkYear(b.year()), b.previousReading(), photo(b.photo()));
+        });
+        router.add("GET", "/api/bills/photo", r -> {
+            UserAccount user = r.requireAdminOrCustomer();
+            String meter = user.isAdmin() ? requireParam(r, "meter") : user.meterNo();
+            String month = r.month("month");
+            Integer year = r.year("year");
+            if (month == null || year == null) {
+                throw ApiError.badRequest("Choose a month and year.");
+            }
+            return billing.photo(meter, month, year);
         });
         router.add("GET", "/api/bills", r -> {
-            UserAccount user = r.requireUser();
+            UserAccount user = r.requireAdminOrCustomer();
             String meter = user.isAdmin() ? r.query("meter") : user.meterNo();
             return billing.search(meter, r.month("month"), r.year("year"));
         });
         router.add("GET", "/api/bills/statement", r -> {
-            UserAccount user = r.requireUser();
+            UserAccount user = r.requireAdminOrCustomer();
             String meter = user.isAdmin() ? requireParam(r, "meter") : user.meterNo();
             String month = r.month("month");
             Integer year = r.year("year");
@@ -161,23 +242,6 @@ final class Endpoints {
             }
             return billing.statement(meter, month, year);
         });
-        router.add("POST", "/api/bills/pay", r -> {
-            UserAccount me = r.requireCustomer();
-            Api.BillKey b = r.body(Api.BillKey.class);
-            String month = month(b.month());
-            int year = Request.checkYear(b.year());
-            billing.submitPayment(me.meterNo(), month, year);
-            audit.record(me, "PAYMENT_REPORTED", me.meterNo() + " " + month + " " + year, "Customer says they paid another way");
-            return null;
-        });
-        router.add("POST", "/api/bills/confirm", r -> {
-            UserAccount admin = r.requireAdmin();
-            Api.BillKey b = r.body(Api.BillKey.class);
-            Bill bill = billing.confirmPayment(text(b.meterNo()), month(b.month()), Request.checkYear(b.year()));
-            audit.record(admin, "PAYMENT_CONFIRMED", bill.meterNo() + " " + bill.month() + " " + bill.year(), Money.tk(bill.total()));
-            return null;
-        });
-
         // Usage planning (customers, for their own meter)
         router.add("POST", "/api/usage/estimate", r -> {
             UserAccount me = r.requireCustomer();
@@ -190,7 +254,7 @@ final class Endpoints {
 
         // Complaints
         router.add("GET", "/api/complaints", r -> {
-            UserAccount user = r.requireUser();
+            UserAccount user = r.requireAdminOrCustomer();
             return complaints.list(user.isAdmin() ? null : user.meterNo());
         });
         router.add("POST", "/api/complaints", r -> {
@@ -267,6 +331,22 @@ final class Endpoints {
     private Customer myProfile(UserAccount me) throws Exception {
         return customers.find(me.meterNo())
                 .orElseThrow(() -> ApiError.notFound("Your customer details couldn't be found."));
+    }
+
+    /** A base64 photo from the app, as bytes. */
+    private static byte[] photo(String base64) {
+        return photo(base64, "Upload a photo of the meter.");
+    }
+
+    private static byte[] photo(String base64, String missing) {
+        if (base64 == null || base64.isBlank()) {
+            throw ApiError.badRequest(missing);
+        }
+        try {
+            return Base64.getDecoder().decode(base64);
+        } catch (IllegalArgumentException e) {
+            throw ApiError.badRequest("The photo couldn't be read.");
+        }
     }
 
     private static String requireParam(Request r, String name) {

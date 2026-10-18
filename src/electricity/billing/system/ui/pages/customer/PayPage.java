@@ -62,7 +62,6 @@ public class PayPage extends Page {
     private final Txt doneText = Txt.muted(" ").wrap(300);
     private final Txt lateNote = Txt.small(" ").wrap(300);
     private final SuccessCheck check = new SuccessCheck();
-    private final Btn manualPaid = new Btn("I've paid another way", Glyph.CHECK, Btn.Style.SECONDARY).fullWidth();
 
     private final JPanel readyView;
     private final JPanel waitingView;
@@ -81,7 +80,6 @@ public class PayPage extends Page {
         add(header("Pay bill", "Pay securely online with SSLCommerz: cards, mobile banking and more."), BorderLayout.NORTH);
 
         payBtn.addActionListener(e -> startPayment());
-        manualPaid.addActionListener(e -> reportManualPayment());
 
         readyView = Ui.vbox(14,
                 Txt.caps("Paying"), payingLabel, payingAmount, lateNote, modeBadge,
@@ -112,9 +110,8 @@ public class PayPage extends Page {
         offlineView = Ui.vbox(14,
                 new IconTile(Glyph.INFO, 42, Theme.WARNING),
                 Txt.h3("Online payment isn't available"),
-                Txt.muted("The server hasn't been set up with SSLCommerz yet. "
-                        + "If you've paid another way, let us know and an admin will confirm it.").wrap(300),
-                manualPaid);
+                Txt.muted("The server hasn't been set up with SSLCommerz yet, so bills can't be paid in the app right now. "
+                        + "Please try again later.").wrap(300));
 
         body(content);
     }
@@ -146,13 +143,11 @@ public class PayPage extends Page {
         list.removeAll();
         cards.clear();
         chosen = null;
-        List<Bill> open = bills.stream().filter(b -> b.status() == BillStatus.NOT_PAID).toList();
-        List<Bill> review = bills.stream().filter(b -> b.status() == BillStatus.PENDING).toList();
+        List<Bill> open = bills.stream().filter(b -> b.status() != BillStatus.PAID).toList();
 
         content.removeAll();
         if (open.isEmpty()) {
-            String text = review.isEmpty() ? "You have no open bills. Nice work!"
-                    : review.size() + " payment" + (review.size() == 1 ? " is" : "s are") + " waiting for confirmation.";
+            String text = "You have no open bills. Nice work!";
             Btn history = new Btn("View my bills", Glyph.RECEIPT, Btn.Style.SECONDARY);
             history.addActionListener(e -> app.go("bills"));
             content.add(EmptyState.of(Glyph.CHECK_CIRCLE, "You're all paid up", text, history), BorderLayout.CENTER);
@@ -184,11 +179,6 @@ public class PayPage extends Page {
                 cards.add(holder[0]);
                 list.add(Ui.left(holder[0]));
                 list.add(Box.createVerticalStrut(10));
-            }
-            for (Bill bill : review) {
-                list.add(Ui.left(Ui.hbox(10, Badge.of(bill.status()),
-                        Txt.small(Fmt.period(bill.month(), bill.year()) + "  ·  " + Fmt.money(bill.amountDue(Dates.today()))))));
-                list.add(Box.createVerticalStrut(8));
             }
             choose(open.get(0), cards.get(0));
             showReady();
@@ -285,10 +275,7 @@ public class PayPage extends Page {
             }
             if (state.status() == Payment.Status.PAID) {
                 stopPolling();
-                boolean review = state.billStatus() == BillStatus.PENDING;
-                doneText.setText(review
-                        ? "SSLCommerz flagged this payment for a quick check. An admin will confirm it shortly."
-                        : "Thanks! Your " + chosen.month() + " " + chosen.year() + " bill is now paid.");
+                doneText.setText("Thanks! Your " + chosen.month() + " " + chosen.year() + " bill is now paid.");
                 checkout.show(doneView);
                 check.play();
                 Toast.success(this, "Payment of " + payingAmount.getText() + " received.");
@@ -299,24 +286,5 @@ public class PayPage extends Page {
                 showReady();
             }
         }, error -> pollInFlight = false);
-    }
-
-    private void reportManualPayment() {
-        if (chosen == null) {
-            return;
-        }
-        Bill bill = chosen;
-        manualPaid.setBusy(true, "Sending…");
-        Tasks.run(() -> {
-            app.billing.submitPayment(bill.month(), bill.year());
-            return null;
-        }, done -> {
-            manualPaid.setBusy(false, null);
-            Toast.success(this, "Thanks! Your " + bill.month() + " payment is waiting for an admin to confirm it.");
-            onShow(null);
-        }, error -> {
-            manualPaid.setBusy(false, null);
-            Toast.error(this, Tasks.message(error));
-        });
     }
 }

@@ -6,6 +6,7 @@ import electricity.billing.system.model.Bill;
 import electricity.billing.system.model.BillStatement;
 import electricity.billing.system.model.TariffPlan;
 import java.lang.reflect.Type;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,20 +22,28 @@ public class BillingClient {
     private final ApiClient api = ApiClient.get();
 
     /**
-     * Admin: prices a meter reading and saves the bill. Leave {@code previousReading}
-     * null to use the last bill's reading. If the bill checker has concerns the
-     * server refuses unless {@code acknowledgeWarnings} is set.
+     * Admin: makes a bill from a photo of the meter (JPEG or PNG bytes). The
+     * server identifies the meter from the photo and reads its display.
+     * {@code expectedMeterNo} is the meter shown in the preview; {@code previousReading}
+     * is only needed for a meter's first bill. If the bill checker has concerns
+     * the server refuses unless {@code acknowledgeWarnings} is set.
      */
-    public Bill createBill(String meterNo, String month, int year, Integer previousReading, int currentReading,
+    public Bill createBill(String month, int year, Integer previousReading, byte[] photo, String expectedMeterNo,
             boolean acknowledgeWarnings) {
-        return api.post("/api/bills", new Api.NewBillRequest(meterNo, month, year, previousReading, currentReading,
-                acknowledgeWarnings), Bill.class);
+        return api.post("/api/bills", new Api.NewBillRequest(month, year, previousReading,
+                Base64.getEncoder().encodeToString(photo), expectedMeterNo, acknowledgeWarnings), Bill.class);
     }
 
-    /** Admin: what a bill would cost and what the bill checker thinks, without saving it. */
-    public Api.BillPreview preview(String meterNo, String month, int year, Integer previousReading, int currentReading) {
-        return api.post("/api/bills/preview", new Api.PreviewRequest(meterNo, month, year, previousReading, currentReading),
-                Api.BillPreview.class);
+    /** Admin: which meter the photo shows, its reading, and what the bill would cost, without saving it. */
+    public Api.BillPreview preview(String month, int year, Integer previousReading, byte[] photo) {
+        return api.post("/api/bills/preview", new Api.PreviewRequest(month, year, previousReading,
+                Base64.getEncoder().encodeToString(photo)), Api.BillPreview.class);
+    }
+
+    /** The meter photo a bill was read from. Customers can only get their own. */
+    public Api.MeterPhoto photo(String meterNo, String month, int year) {
+        return api.get(ApiClient.withQuery("/api/bills/photo",
+                ApiClient.params("meter", meterNo, "month", month, "year", year)), Api.MeterPhoto.class);
     }
 
     /** Admin: the meter's last recorded reading and how it's billed. */
@@ -47,11 +56,6 @@ public class BillingClient {
     public List<Bill> search(String meterNo, String month, Integer year) {
         return api.get(ApiClient.withQuery("/api/bills",
                 ApiClient.params("meter", meterNo, "month", month, "year", year)), BILL_LIST);
-    }
-
-    /** Admin: confirms a payment. */
-    public void confirmPayment(String meterNo, String month, int year) {
-        api.post("/api/bills/confirm", new Api.BillKey(meterNo, month, year), null);
     }
 
     /** Every tariff plan, newest first within each category. */
@@ -77,11 +81,6 @@ public class BillingClient {
     public BillStatement statement(String meterNo, String month, int year) {
         return api.get(ApiClient.withQuery("/api/bills/statement",
                 ApiClient.params("meter", meterNo, "month", month, "year", year)), BillStatement.class);
-    }
-
-    /** Customer reports a payment; it waits for an admin to confirm it. */
-    public void submitPayment(String month, int year) {
-        api.post("/api/bills/pay", new Api.BillKey(null, month, year), null);
     }
 
     /** Customer: what a month of this many units would cost them. */

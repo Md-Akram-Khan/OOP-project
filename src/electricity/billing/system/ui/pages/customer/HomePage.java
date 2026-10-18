@@ -57,7 +57,7 @@ public class HomePage extends Page {
         heroBadge.setVisible(false);
         heroAction.setVisible(false);
         heroAction.addActionListener(e -> {
-            if (latest != null && latest.status() == BillStatus.NOT_PAID) {
+            if (latest != null && latest.status() != BillStatus.PAID) {
                 app.go("pay");
             } else if (latest != null) {
                 app.go("statement", new Period(latest.month(), latest.year()));
@@ -104,9 +104,9 @@ public class HomePage extends Page {
             heroAmount.setText(Fmt.money(latest.amountDue(today)));
             heroBadge.set(latest, today);
             heroBadge.setVisible(true);
-            heroNote.setText(latest.units() + " units" + (latest.dueDate() == null || latest.status() != BillStatus.NOT_PAID ? ""
+            heroNote.setText(latest.units() + " units" + (latest.dueDate() == null || latest.status() == BillStatus.PAID ? ""
                     : latest.isOverdue(today) ? "  ·  was due " + Fmt.date(latest.dueDate()) : "  ·  due " + Fmt.date(latest.dueDate())));
-            boolean unpaid = latest.status() == BillStatus.NOT_PAID;
+            boolean unpaid = latest.status() != BillStatus.PAID;
             heroAction.setText(unpaid ? "Pay now" : "View invoice");
             heroAction.setVisible(true);
         }
@@ -148,7 +148,7 @@ public class HomePage extends Page {
             show(Glyph.ALERT, Theme.DANGER, "Your " + period + " bill is overdue",
                     "It was due on " + Fmt.date(b.dueDate()) + ". You now owe " + Fmt.money(b.amountDue(today))
                             + ", including the late fee. Pay soon to avoid disconnection.");
-        } else if (b.status() == BillStatus.NOT_PAID && daysLeft <= 5) {
+        } else if (b.status() != BillStatus.PAID && daysLeft <= 5) {
             show(Glyph.CLOCK, Theme.WARNING, "Due " + (daysLeft == 0 ? "today" : daysLeft == 1 ? "tomorrow" : "in " + daysLeft + " days"),
                     "Pay " + Fmt.money(b.total()) + " by " + Fmt.date(b.dueDate()) + " to avoid the late fee.");
         } else if (plan != null && plan.billType() == BillType.NORMAL && plan.qualifiesForLifeline(b.units())) {

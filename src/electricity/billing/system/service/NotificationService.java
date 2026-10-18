@@ -48,7 +48,7 @@ public class NotificationService {
     static List<Notification> reminders(List<Bill> bills, LocalDate today) {
         List<Notification> list = new ArrayList<>();
         for (Bill b : bills) {
-            if (b.status() != BillStatus.NOT_PAID || b.dueDate() == null) {
+            if (b.status() == BillStatus.PAID || b.dueDate() == null) {
                 continue;
             }
             String period = b.month() + " " + b.year();

@@ -1,5 +1,6 @@
 package electricity.billing.system.ui;
 
+import electricity.billing.system.client.ApplicationClient;
 import electricity.billing.system.client.AuthClient;
 import electricity.billing.system.client.BillingClient;
 import electricity.billing.system.client.CustomerClient;
@@ -13,6 +14,7 @@ public final class AppContext {
     public final CustomerClient customers = new CustomerClient();
     public final BillingClient billing = new BillingClient();
     public final SupportClient support = new SupportClient();
+    public final ApplicationClient applications = new ApplicationClient();
 
     private final UserAccount account;
     private final AppWindow window;
@@ -28,6 +30,11 @@ public final class AppContext {
 
     public AppWindow window() {
         return window;
+    }
+
+    /** Signs out and returns to the sign-in window. */
+    public void logout() {
+        window.logout();
     }
 
     /** Re-reads the unread counts shown next to menu items. */

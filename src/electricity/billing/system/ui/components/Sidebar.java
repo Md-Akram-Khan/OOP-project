@@ -75,7 +75,8 @@ public class Sidebar extends JPanel {
 
         Txt user = new Txt(account.name() == null || account.name().isBlank() ? account.username() : account.name(),
                 Theme.semibold(13), () -> Color.WHITE);
-        Txt role = new Txt(account.isAdmin() ? "Administrator" : "Customer · " + account.meterNo(),
+        Txt role = new Txt(account.isAdmin() ? "Administrator" : account.isApplicant() ? "Applicant"
+                : "Customer · " + account.meterNo(),
                 Theme.regular(12), () -> Theme.INK_MUTED);
         JPanel who = Ui.vbox(2, user, role);
         JPanel footer = new JPanel(new BorderLayout(10, 0)) {

@@ -9,8 +9,10 @@ import java.sql.SQLException;
  * Opens connections to the Supabase PostgreSQL database. Only the server uses
  * this class, so only the server needs the SUPABASE_* settings.
  *
- * Every connection is opened for one unit of work and closed straight after,
- * so nothing leaks.
+ * Every unit of work takes a connection and closes it straight after, so
+ * nothing leaks. Closing hands the connection back to a small pool
+ * ({@link ConnectionPool}) so the next request doesn't pay for a new TLS
+ * handshake with Supabase.
  */
 public final class Database {
 
@@ -20,6 +22,7 @@ public final class Database {
     }
 
     private static final String UNIQUE_VIOLATION = "23505";
+    private static final ConnectionPool POOL = new ConnectionPool(Database::connectWithRetry);
 
     static {
         // Two attempts (see open) must fit inside the app's 20-second request timeout.
@@ -93,6 +96,15 @@ public final class Database {
      * of an error for the user.
      */
     private static Connection open() throws SQLException {
+        return POOL.borrow();
+    }
+
+    /** Closes the pooled connections, e.g. when the server stops. */
+    public static void shutdown() {
+        POOL.shutdown();
+    }
+
+    private static Connection connectWithRetry() throws SQLException {
         try {
             return connect();
         } catch (SQLException e) {

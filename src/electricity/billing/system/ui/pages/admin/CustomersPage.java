@@ -3,6 +3,7 @@ package electricity.billing.system.ui.pages.admin;
 import electricity.billing.system.ui.components.CenterLayout;
 import com.formdev.flatlaf.FlatClientProperties;
 import electricity.billing.system.model.Customer;
+import electricity.billing.system.model.Meter;
 import electricity.billing.system.ui.AppContext;
 import electricity.billing.system.ui.Page;
 import electricity.billing.system.ui.components.Btn;
@@ -23,6 +24,7 @@ import java.awt.Dimension;
 import java.awt.print.PrinterException;
 import java.util.List;
 import java.util.regex.Pattern;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.RowFilter;
@@ -72,13 +74,16 @@ public class CustomersPage extends Page {
                 Toast.error(this, "Printing failed: " + ex.getMessage());
             }
         });
+        Btn meterNumber = new Btn("Meter no. on meter", Glyph.HASH, Btn.Style.SECONDARY);
+        meterNumber.setToolTipText("Set the number printed on the selected customer's meter, so photos of it are recognised");
+        meterNumber.addActionListener(e -> editPrintedNumber());
         Btn add = new Btn("Add customer", Glyph.USER_PLUS, Btn.Style.PRIMARY);
         add.addActionListener(e -> app.go("add-customer"));
 
         JPanel header = Ui.clear(new BorderLayout());
         header.add(Ui.vbox(6, Txt.h1("Customers"), count), BorderLayout.WEST);
         JPanel actions = Ui.clear(new CenterLayout());
-        actions.add(Ui.hbox(10, search, print, add));
+        actions.add(Ui.hbox(10, search, meterNumber, print, add));
         header.add(actions, BorderLayout.EAST);
         add(header, BorderLayout.NORTH);
 
@@ -122,5 +127,33 @@ public class CustomersPage extends Page {
         TableRowSorter<TableModel> sorter = (TableRowSorter<TableModel>) table.getRowSorter();
         String text = search.getText().trim();
         sorter.setRowFilter(text.isEmpty() ? null : RowFilter.regexFilter("(?i)" + Pattern.quote(text)));
+    }
+
+    /**
+     * Sets the number printed on the selected customer's meter. Customers added
+     * before meter numbers were recorded need it once, so the Calculate bill
+     * page can recognise their meter in a photo.
+     */
+    private void editPrintedNumber() {
+        Object selected = table.selected(1);
+        if (selected == null) {
+            Toast.info(this, "Select a customer first.");
+            return;
+        }
+        String meterNo = selected.toString();
+        Tasks.run(this, () -> app.billing.lastReading(meterNo), m -> {
+            String current = m.serialNo() == null ? "" : m.serialNo();
+            Object typed = JOptionPane.showInputDialog(this,
+                    "Meter number exactly as printed on customer " + meterNo + "'s meter:",
+                    "Meter number on the meter", JOptionPane.PLAIN_MESSAGE, null, null, current);
+            if (typed == null || typed.toString().trim().isEmpty() || typed.toString().trim().equals(current)) {
+                return;
+            }
+            String value = typed.toString().trim();
+            Tasks.run(this, () -> {
+                app.customers.saveMeter(new Meter(meterNo, m.meterType(), m.billType(), Meter.DEFAULT_BILLING_DAYS, m.loadKw(), value));
+                return null;
+            }, done -> Toast.success(this, "Saved. Photos of meter " + value + " will now be recognised as customer " + meterNo + "."));
+        });
     }
 }

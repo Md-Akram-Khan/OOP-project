@@ -39,9 +39,9 @@ public record Bill(
         return charges == null;
     }
 
-    /** Unpaid and past its due date. A bill under review is not overdue: the customer has paid. */
+    /** Unpaid and past its due date. */
     public boolean isOverdue(LocalDate today) {
-        return status == BillStatus.NOT_PAID && dueDate != null && today.isAfter(dueDate);
+        return status != BillStatus.PAID && dueDate != null && today.isAfter(dueDate);
     }
 
     /** What the customer owes today: the after-due-date total once the due date has passed. */
