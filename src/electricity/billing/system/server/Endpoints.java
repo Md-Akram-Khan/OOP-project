@@ -118,7 +118,7 @@ final class Endpoints {
         router.add("POST", "/api/applications", r -> {
             UserAccount me = r.requireApplicant();
             MeterApplication saved = applications.submit(me, r.body(Api.NewApplication.class));
-            audit.record(me, "APPLICATION_SUBMITTED", saved.reference(), saved.district() + ", " + saved.billType().displayName()
+            audit.record(me, "APPLICATION_SUBMITTED", saved.reference(), saved.connection().district() + ", " + saved.categoryLabel()
                     + ", " + saved.loadKw().stripTrailingZeros().toPlainString() + " kW");
             return saved;
         });

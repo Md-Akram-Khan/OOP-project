@@ -26,7 +26,7 @@ import javax.imageio.ImageIO;
  */
 final class TesseractOcr {
 
-    private static final long TIMEOUT_SECONDS = 20;
+    private static final long TIMEOUT_SECONDS = 10;
     private static final String[] USUAL_PLACES = {
         "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
         "C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe",

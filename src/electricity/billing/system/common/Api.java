@@ -188,13 +188,26 @@ public final class Api {
     }
 
     /** The signed-in applicant's verified details. */
-    public record ApplicantProfile(String username, String name, String nidNo, String phone) {
+    /** The applicant's verified details; date of birth and parents' names are from their NID record. */
+    public record ApplicantProfile(String username, String name, String nidNo, String phone, LocalDate dateOfBirth,
+            String fatherName, String motherName) {
     }
 
     /** What an applicant fills in to apply for a meter; name, NID and phone come from verification. */
-    public record NewApplication(String email, String house, String road, String area, String postOffice, String district,
-            String division, BillType billType, BigDecimal loadKw, MeterApplication.Phase phase,
-            MeterApplication.Ownership ownership, String notes) {
+    /**
+     * A new-connection application, field for field with DPDC's form. The
+     * applicant's name, NID number, date of birth and phone aren't sent: they
+     * come from the applicant's verification. Personal applications fill the
+     * parents, spouse and gender; organizations fill {@code organizationName}.
+     */
+    public record NewApplication(MeterApplication.ConsumerType consumerType,
+            String fatherName, String motherName, String spouseName, MeterApplication.Gender gender,
+            String organizationName,
+            MeterApplication.Address mailing, MeterApplication.Address connection, String area, String nocs,
+            MeterApplication.ConnectionType connectionType, MeterApplication.Phase phase, String tariffCategory,
+            Integer meterCount, BigDecimal loadKw, Boolean differentOwners,
+            Integer existingMeters, BigDecimal existingLoadKw, String existingCustomerNo,
+            MeterApplication.Ownership ownership, String notes, boolean declarationAccepted) {
     }
 
     public record ApplicationUpdate(long id, MeterApplication.Status status, String note) {

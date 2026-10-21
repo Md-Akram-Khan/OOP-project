@@ -1,0 +1,248 @@
+DPDC ONLINE APPLICATION - NEW CONNECTION: FORM FIELDS
+=====================================================
+
+Page:     https://onlineapplication.dpdc.org.bd/frm_main_application.php
+Analysed: 18 Oct 2026, from the page's HTML and its script (js/myjs.js)
+
+"Required" below means the page refuses to submit without it: a red * on the
+form, or a check in the page's validateForm() script (the two differ in one
+place, noted under NOCS). These are the checks the browser runs; the server may
+check more.
+
+
+1. CONSUMER TYPE (choose one; Personal is selected by default)
+--------------------------------------------------------------
+  ( ) Personal                 -> shows section 2A
+  ( ) Organization / Institute -> shows section 2B
+  ( ) Investor                 -> no form. The page only says: "For Institutional
+                                  Investors, Use BIDA Web Portal (bidaquickserv.org)"
+
+Only one of 2A or 2B is shown. Sections 3 to 7 are the same for Personal and
+Organization.
+
+
+2A. PERSONAL INFORMATION (Consumer Type = Personal)
+---------------------------------------------------
+  Field            Required  Input           Rules / notes
+  ---------------  --------  --------------  -------------------------------------------
+  Name             YES       text, max 100   "Enter name exactly as on NID"; letters,
+                                             spaces and . - , only
+  Spouse Name      no        text, max 40    letters only
+  Father's Name    YES       text, max 40    letters only
+  Mother's Name    YES       text, max 40    letters only
+  Date of Birth    YES       date picker     shown as d-M-yyyy (e.g. 5-Feb-1976)
+  Gender           YES       dropdown        Male / Female
+
+
+2B. ORGANIZATIONAL / INSTITUTIONAL INFORMATION (Consumer Type = Organization)
+-----------------------------------------------------------------------------
+  Field                       Required  Input          Rules / notes
+  --------------------------  --------  -------------  -----------------------------
+  Organization Name           YES       text, max 100
+  Proprietor/Applicant Name   YES       text, max 100  "Enter name exactly as on NID";
+                                                       letters only
+  Proprietor's Date of Birth  YES       date picker    shown as d-M-yyyy
+
+
+  WHAT CHANGES BETWEEN PERSONAL AND ORGANIZATION
+  ----------------------------------------------
+  Personal asks for              Organization asks for instead
+  -----------------------------  ------------------------------------
+  Name (as on NID)               Organization Name
+                                 Proprietor/Applicant Name (as on NID)
+  Date of Birth                  Proprietor's Date of Birth
+  Father's Name   (required)     - not asked -
+  Mother's Name   (required)     - not asked -
+  Gender          (required)     - not asked -
+  Spouse Name     (optional)     - not asked -
+
+  Personal: 5 required + 1 optional.  Organization: 3 required.
+  Everything else on the form is identical.
+
+
+3. MAILING ADDRESS
+------------------
+  Field              Required  Input          Rules / notes
+  -----------------  --------  -------------  ----------------------------------------
+  House/Plot/Dag No  YES       text, max 40
+  LANE/Road No       no        text, max 40
+  Section            no        text, max 40
+  Block              no        text, max 40
+  District           YES       dropdown       DHAKA or NARAYANGANJ only (DPDC's area)
+  Thana              YES       dropdown       list loads after District is chosen
+                                              (see Appendix A)
+  Post Code          no        number, max 5
+  E-mail             no        text, max 50   format not checked
+  Telephone          no        number, max 8  land line
+  Mobile             YES       number, max 11 11 digits. (The page calls a length check,
+                                              check_mMobile(), that isn't defined, so
+                                              only the 11-digit limit applies here.)
+
+
+4. CONNECTION ADDRESS (where the meter will be installed)
+---------------------------------------------------------
+  [ ] "If the Mailing address and Connection address are same, please tick the box"
+      -> copies every mailing field (and Thana) into the connection address.
+
+  Field              Required  Input          Rules / notes
+  -----------------  --------  -------------  ----------------------------------------
+  House/Plot/Dag No  YES       text, max 40
+  LANE/Road No       no        text, max 40
+  Section            no        text, max 40
+  Block              no        text, max 40
+  District           YES       dropdown       DHAKA or NARAYANGANJ
+  Thana              YES       dropdown       loads after District (Appendix A)
+  Post Code          no        number, max 5
+  E-mail             no        text, max 50
+  Telephone          no        number, max 8
+  Mobile             YES       number         must be exactly 11 digits (checked
+                                              when you leave the field)
+  Area               YES       dropdown       loads after Thana is chosen
+  NOCS               YES       dropdown       the local DPDC office (Network
+                                              Operation & Customer Service);
+                                              loads after Area is chosen.
+                                              Not marked with a red * on the form,
+                                              but the form refuses to submit
+                                              without it.
+
+
+5. DESCRIPTION OF CONNECTION
+----------------------------
+  Field                     Required  Input          Rules / notes
+  ------------------------  --------  -------------  ---------------------------------
+  Connection Type           (preset)  dropdown       Permanent (default) / Temporary
+  Phase                     (preset)  dropdown       Single (default) / Three.
+                                                     Set automatically: Three when
+                                                     Total Demand Load > 7 kW, or
+                                                     when the tariff is MT/HT/EHT;
+                                                     otherwise Single.
+  Tariff Category           YES       dropdown       23 categories (Appendix B)
+  Demand Meter              YES       number, max 3  number of meters wanted; at
+                                                     least 1
+  Total Demand Load         YES       number (kW)    at least 2 kW per meter
+                                                     (Demand Meter x 2)
+  Meter owners are          YES only  Yes / No       shown only when Demand Meter is
+  different person?         if >1                    more than 1
+  No. of Existing Meter     no        number, max 3
+  Total Existing Load       no        number (kW)
+  Existing Customer Number  no        number, 8      shown only when No. of Existing
+  (any one)                           digits         Meter > 0; if filled, must be
+                                                     8 digits
+
+  Load check: Total Demand Load + Total Existing Load must lie within the
+  chosen tariff's range (e.g. LT-A 2-80 kW, MT-1 51-5000 kW); otherwise "Total
+  load is not accurate according to the tariff category".
+
+
+6. DECLARATION
+--------------
+  [ ] I/We hereby declare that I/we shall comply with the Electricity Act of the
+      People's Republic of Bangladesh and the tariff structure approved by the
+      Ministry of Power, Energy and Mineral Resources ... and agree to abide by
+      the Terms of Service and Privacy Policy of DPDC.
+      REQUIRED: "You must agree to the terms first".
+
+
+7. CAPTCHA, THEN SUBMIT
+-----------------------
+  Enter the given code (6 characters from an image)   REQUIRED
+  Save button -> "Do you want to Submit your application?" -> submitted.
+
+
+AFTER SUBMITTING
+----------------
+  - The page asks applicants to upload the necessary documents after the
+    application is complete; the guide is guides/File_Upload.pdf
+    (https://onlineapplication.dpdc.org.bd/guides/File_Upload.pdf, 17 pages,
+    in Bangla, mostly screenshots). Its text couldn't be extracted, so the
+    document list isn't included here; it refers to OTP and TIN.
+  - The site's menu also has "Forgot Tracking/PIN" and "Customer Login", so an
+    application gets a tracking number and PIN for following it up.
+  - The page logs out after 15 minutes without activity.
+
+Filled in automatically (not asked): the applicant's IP address, the tariff's
+lower/upper load limits, and an internal form id.
+
+
+REQUIRED FIELDS AT A GLANCE
+---------------------------
+  Personal (21):     Consumer Type, Name, Father's Name, Mother's Name,
+                     Date of Birth, Gender,
+                     Mailing: House/Plot/Dag No, District, Thana, Mobile,
+                     Connection: House/Plot/Dag No, District, Thana, Mobile,
+                     Area, NOCS,
+                     Tariff Category, Demand Meter, Total Demand Load,
+                     Declaration ticked, Captcha
+                     (+ "Meter owners are different person?" when more than
+                     one meter)
+
+  Organization (19): the same, but Organization Name, Proprietor/Applicant
+                     Name and Proprietor's Date of Birth instead of Name,
+                     Father's Name, Mother's Name, Date of Birth and Gender.
+
+  (Counts include Consumer Type, the declaration and the captcha; Connection
+  Type and Phase always have a value, so they aren't counted.)
+
+
+COMPARED WITH OUR APP'S METER APPLICATION
+-----------------------------------------
+  Since 19 Oct 2026 our "Apply for a new meter" form has all the fields above,
+  required and optional as here, with these differences:
+    - Name, NID, date of birth and phone aren't typed: they come from the
+      applicant's phone and NID verification (the proprietor's, for an
+      organization). Father's and mother's names are filled in from the NID
+      record and can be changed.
+    - Division and district cover all of Bangladesh; the thana is typed, with
+      DPDC's Dhaka and Narayanganj thanas suggested.
+    - NOCS is optional: there's no office list to choose from.
+    - Connection address e-mail is required (bills and payment receipts).
+    - Post code is 4 digits; telephone 6-11 digits.
+    - Gender also offers "Third gender".
+    - No captcha: applicants are already signed in.
+    - Categories over 5000 kW (HT, EHT) are listed but refused, like DPDC
+      sends industrial investors to BIDA.
+  Ours also asks whether the applicant owns or rents the premises, and for
+  optional notes.
+
+
+APPENDIX A: THANA LISTS (from the page's getThana.php)
+-------------------------------------------------------
+  DHAKA: Adabor, Banani, Bangshal, Chalkbazar Model, Demra, Dhanmondi,
+    Gandaria, Hatirjheel, Hazaribag, Jatrabari, Kadamtoli, Kalabagan,
+    Kamrangir Char, Khailgaon, Khilgaon, Kotowali, Lalbag, Mohammadpur,
+    Motijheel, Mugdapara, New Market, Paltan, Ramna, Rampura, Sabujbagh,
+    Shahabag, Shahjahanpur, Sher-e-Bangla Nagar, Shyampur, Sutrapur, Tejgaon,
+    Tejgaon I/A, Trimohoni, Wari  (34)
+  NARAYANGANJ: D-13, Fatullah, Fatullah (E3), Narayangonj Sadar,
+    Narayangonj Sadar (E3), Rupgonj, Siddhirgonj  (7)
+  Area and NOCS lists depend on the Thana and Area chosen, and come from the
+  server the same way.
+
+
+APPENDIX B: TARIFF CATEGORIES (load range)
+------------------------------------------
+  LT-A   Residential Light and Power                  2 - 80 kW
+  LT-B   Agricultural Pumping                         2 - 80 kW
+  LT-C1  Small Industrial                             2 - 80 kW
+  LT-C2  Low Tension Construction                     2 - 80 kW
+  LT-D1  Education, Religious, Charity and Hospital   2 - 80 kW
+  LT-D2  Street Light and Water Pumps and Battery     2 - 80 kW
+  LT-D3  Low Tension Battery Charging Station         2 - 80 kW
+  LT-E   Commercial and Offices                       2 - 80 kW
+  LT-T   Low Tension Temporary                        2 - 80 kW
+  MT-1   Medium Tension Residential                   51 - 5000 kW
+  MT-2   Medium Tension Commercial and Office         51 - 5000 kW
+  MT-3   Medium Tension Industries                    51 - 5000 kW
+  MT-4   Medium Tension Construction                  51 - 5000 kW
+  MT-5   Medium Tension General                       51 - 5000 kW
+  MT-6   Medium Tension Temporary                     51 - 5000 kW
+  MT-7   Medium Tension Battery Charging Station      51 - 5000 kW
+  MT-8   Medium Tension Agriculture                   51 - 5000 kW
+  HT-1   High Tension General                         5001 - 30000 kW
+  HT-2   High Tension Commercial and Office           5001 - 30000 kW
+  HT-3   High Tension Industries                      5001 - 30000 kW
+  HT-4   High Tension Construction                    5001 - 30000 kW
+  EHT-1  Extra High Tension General                   20001 - 140000 kW
+  EHT-2  Extra High Tension General                   more than 140001 kW
+  The form notes that industrial connections should apply through the BIDA
+  portal (bidaquickserv.org).

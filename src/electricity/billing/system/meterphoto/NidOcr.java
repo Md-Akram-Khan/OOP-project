@@ -254,7 +254,7 @@ final class NidOcr {
     }
 
     /** True when something on the photo says it's an NID card: an NID-length number, or the card's own wording. */
-    private static boolean looksLikeNidCard(List<String> lines) {
+    static boolean looksLikeNidCard(List<String> lines) {
         return bestNumber(lines) != null || lines.stream().map(l -> l.toUpperCase(Locale.ROOT))
                 .anyMatch(l -> l.contains("NATIONAL ID") || l.contains("BIRTH") || l.contains("BANGLADESH") || l.matches(".*\\bNID\\b.*"));
     }
@@ -459,35 +459,50 @@ final class NidOcr {
         return out;
     }
 
+    /** The average over a (2r+1)-square around each point, with running sums: as quick for a wide blur as a narrow one. */
     private static int[] boxBlur(int[] px, int w, int h, int r) {
         int[] tmp = new int[px.length];
         int[] out = new int[px.length];
         for (int y = 0; y < h; y++) {
+            long sum = 0;
+            int n = 0;
+            for (int x = 0; x <= Math.min(r, w - 1); x++) {
+                sum += px[y * w + x];
+                n++;
+            }
             for (int x = 0; x < w; x++) {
-                int sum = 0;
-                int n = 0;
-                for (int dx = -r; dx <= r; dx++) {
-                    int xx = x + dx;
-                    if (xx >= 0 && xx < w) {
-                        sum += px[y * w + xx];
-                        n++;
-                    }
+                tmp[y * w + x] = (int) (sum / n);
+                int add = x + r + 1;
+                int drop = x - r;
+                if (add < w) {
+                    sum += px[y * w + add];
+                    n++;
                 }
-                tmp[y * w + x] = sum / n;
+                if (drop >= 0) {
+                    sum -= px[y * w + drop];
+                    n--;
+                }
             }
         }
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                int sum = 0;
-                int n = 0;
-                for (int dy = -r; dy <= r; dy++) {
-                    int yy = y + dy;
-                    if (yy >= 0 && yy < h) {
-                        sum += tmp[yy * w + x];
-                        n++;
-                    }
+        for (int x = 0; x < w; x++) {
+            long sum = 0;
+            int n = 0;
+            for (int y = 0; y <= Math.min(r, h - 1); y++) {
+                sum += tmp[y * w + x];
+                n++;
+            }
+            for (int y = 0; y < h; y++) {
+                out[y * w + x] = (int) (sum / n);
+                int add = y + r + 1;
+                int drop = y - r;
+                if (add < h) {
+                    sum += tmp[add * w + x];
+                    n++;
                 }
-                out[y * w + x] = sum / n;
+                if (drop >= 0) {
+                    sum -= tmp[drop * w + x];
+                    n--;
+                }
             }
         }
         return out;

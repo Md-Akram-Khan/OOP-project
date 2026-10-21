@@ -65,7 +65,7 @@ public class AuthClient {
     /** Sends photos of both sides of the NID card; the front (with the number) is checked against the NID records. */
     public Api.IdentityVerified verifyNid(String phoneToken, byte[] front, byte[] back) {
         Base64.Encoder base64 = Base64.getEncoder();
-        return api.post("/api/signup/nid", new Api.NidCheckRequest(phoneToken, base64.encodeToString(front),
+        return api.postPhoto("/api/signup/nid", new Api.NidCheckRequest(phoneToken, base64.encodeToString(front),
                 base64.encodeToString(back)), Api.IdentityVerified.class);
     }
 

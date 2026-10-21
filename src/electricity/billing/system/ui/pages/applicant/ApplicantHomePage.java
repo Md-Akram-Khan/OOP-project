@@ -76,9 +76,11 @@ public class ApplicantHomePage extends Page {
         head.add(Ui.hbox(10, Txt.h2("New meter application"), badge), BorderLayout.WEST);
         head.add(Txt.small(a.reference() + "  ·  submitted " + Fmt.dateTime(a.createdAt())), BorderLayout.EAST);
         JPanel body = Ui.vbox(6, head,
-                Txt.body(a.address() + ", " + a.district() + ", " + a.division()).wrap(760),
-                Txt.small(a.billType().displayName() + "  ·  " + Fmt.kw(a.loadKw()) + "  ·  " + a.phase() + "  ·  "
-                        + a.ownership() + "  ·  " + a.email()));
+                Txt.body((a.consumerType() == MeterApplication.ConsumerType.ORGANIZATION ? a.consumerName() + ":  " : "")
+                        + a.address() + ", " + a.connection().division()).wrap(760),
+                Txt.small(a.categoryLabel() + "  ·  " + a.connectionType() + "  ·  " + a.meterCount()
+                        + (a.meterCount() == 1 ? " meter" : " meters") + "  ·  " + Fmt.kw(a.loadKw()) + "  ·  " + a.phase()
+                        + "  ·  " + a.ownership() + (a.connection().email() == null ? "" : "  ·  " + a.connection().email())));
         if (a.adminNote() != null && !a.adminNote().isBlank()) {
             body.add(Ui.left(new Callout(Glyph.MAIL, a.status() == MeterApplication.Status.REJECTED ? Theme.DANGER : Theme.BLUE,
                     "Note from the office", 720).lines(a.adminNote())));

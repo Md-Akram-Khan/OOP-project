@@ -32,7 +32,6 @@ public final class ApiClient {
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
     /** Requests carrying photos take longer: the upload, and reading the photo on the server. */
     private static final Duration PHOTO_TIMEOUT = Duration.ofSeconds(90);
-    private static final int PHOTO_BODY_CHARS = 1_000_000;
     private static volatile ApiClient instance;
 
     private final String baseUrl;
@@ -80,7 +79,7 @@ public final class ApiClient {
     /** True if the server answers its health check. */
     public boolean isServerUp() {
         try {
-            send("GET", "/api/health", null, null);
+            send("GET", "/api/health", null, null, TIMEOUT);
             return true;
         } catch (AppException e) {
             return false;
@@ -92,15 +91,20 @@ public final class ApiClient {
     }
 
     <T> T get(String path, Type responseType) {
-        return send("GET", path, null, responseType);
+        return send("GET", path, null, responseType, TIMEOUT);
     }
 
     <T> T post(String path, Object body, Type responseType) {
-        return send("POST", path, body, responseType);
+        return send("POST", path, body, responseType, TIMEOUT);
+    }
+
+    /** A request carrying photos the server reads: the upload, and the reading, take longer. */
+    <T> T postPhoto(String path, Object body, Type responseType) {
+        return send("POST", path, body, responseType, PHOTO_TIMEOUT);
     }
 
     <T> T put(String path, Object body, Type responseType) {
-        return send("PUT", path, body, responseType);
+        return send("PUT", path, body, responseType, TIMEOUT);
     }
 
     /** Builds "path?a=1&b=2", skipping null values. */
@@ -122,10 +126,10 @@ public final class ApiClient {
         return map;
     }
 
-    private <T> T send(String method, String path, Object body, Type responseType) {
+    private <T> T send(String method, String path, Object body, Type responseType, Duration timeout) {
         String json = body == null ? null : Json.GSON.toJson(body);
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl + path))
-                .timeout(json != null && json.length() > PHOTO_BODY_CHARS ? PHOTO_TIMEOUT : TIMEOUT)
+                .timeout(timeout)
                 .header("Accept", "application/json");
         String currentToken = token;
         if (currentToken != null) {

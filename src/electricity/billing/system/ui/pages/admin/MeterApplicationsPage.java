@@ -149,7 +149,7 @@ public class MeterApplicationsPage extends Page {
         }).collect(Collectors.toCollection(ArrayList::new));
         table.clear();
         for (MeterApplication a : shown) {
-            table.addRow(a.reference(), a.applicantName(), a.district(), a.billType().displayName() + " · " + Fmt.kw(a.loadKw()),
+            table.addRow(a.reference(), a.consumerName(), a.connection().district(), a.categoryLabel() + " · " + Fmt.kw(a.loadKw()),
                     Badge.Label.of(a.status()));
         }
         long fresh = all.stream().filter(a -> a.status() == MeterApplication.Status.SUBMITTED).count();
@@ -176,11 +176,9 @@ public class MeterApplicationsPage extends Page {
         }
         MeterApplication a = selected;
         detailRef.setText(a.reference() + "  ·  " + a.status().label().toUpperCase());
-        detailName.setText(a.applicantName());
-        detailInfo.setText("NID " + a.nidNo() + " (verified)  ·  " + a.phone() + " (verified)  ·  " + a.email()
-                + "  ·  submitted " + Fmt.dateTime(a.createdAt()));
-        detailAddress.setText(a.address() + ", " + a.district() + ", " + a.division() + "\n" + a.billType().displayName()
-                + " · " + Fmt.kw(a.loadKw()) + " · " + a.phase() + " · " + a.ownership());
+        detailName.setText(a.consumerName());
+        detailInfo.setText(applicantLine(a) + "\nSubmitted " + Fmt.dateTime(a.createdAt()));
+        detailAddress.setText(details(a));
         detailNotes.setText(a.notes() == null ? " " : "Applicant's note: " + a.notes());
         boolean connected = a.status() == MeterApplication.Status.CONNECTED;
         connectedText.setText(connected ? "Meter " + a.meterNo() + " connected. The applicant is now a customer." : " ");
@@ -192,6 +190,75 @@ public class MeterApplicationsPage extends Page {
         meterNo.setValue("");
         sideStates.show(side, "detail");
         side.revalidate();
+    }
+
+    /** Who applied: the verified applicant (the proprietor, for an organization) and their family details. */
+    private static String applicantLine(MeterApplication a) {
+        StringBuilder s = new StringBuilder(a.consumerType().toString());
+        if (a.consumerType() == MeterApplication.ConsumerType.ORGANIZATION) {
+            s.append("\nProprietor: ").append(a.applicantName());
+        }
+        s.append("\nNID ").append(a.nidNo()).append(" (verified)");
+        if (a.dateOfBirth() != null) {
+            s.append("  ·  born ").append(Fmt.date(a.dateOfBirth()));
+        }
+        s.append("\nPhone ").append(a.phone()).append(" (verified)");
+        if (a.consumerType() == MeterApplication.ConsumerType.PERSONAL && a.fatherName() != null) {
+            s.append("\nFather: ").append(a.fatherName()).append("\nMother: ").append(a.motherName());
+            if (a.spouseName() != null) {
+                s.append("\nSpouse: ").append(a.spouseName());
+            }
+            if (a.gender() != null) {
+                s.append("\nGender: ").append(a.gender());
+            }
+        }
+        return s.toString();
+    }
+
+    /** The connection and mailing addresses and the connection asked for. */
+    private static String details(MeterApplication a) {
+        MeterApplication.Address c = a.connection();
+        StringBuilder s = new StringBuilder("CONNECTION ADDRESS\n").append(a.address()).append(", ").append(c.division());
+        if (a.nocs() != null) {
+            s.append("\nNOCS: ").append(a.nocs());
+        }
+        s.append(contact(c));
+        MeterApplication.Address m = a.mailing();
+        s.append("\n\nMAILING ADDRESS\n");
+        s.append(m == null ? "Not given (application made before the full form)"
+                : m.oneLine() + ", " + m.division() + contact(m));
+        s.append("\n\nCONNECTION\n").append(a.tariffCategory() == null ? a.billType().displayName()
+                : a.tariffCategory() + " (billed as " + a.billType().displayName().toLowerCase() + ")");
+        s.append("\n").append(a.connectionType()).append(" · ").append(a.phase()).append(" · ").append(a.ownership());
+        s.append("\n").append(a.meterCount()).append(a.meterCount() == 1 ? " meter" : " meters").append(", ")
+                .append(Fmt.kw(a.loadKw())).append(" in total");
+        if (a.differentOwners() != null) {
+            s.append(a.differentOwners() ? ", owners are different people" : ", same owner");
+        }
+        if (a.existingMeters() != null && a.existingMeters() > 0 || a.existingLoadKw() != null && a.existingLoadKw().signum() > 0) {
+            s.append("\nExisting: ").append(a.existingMeters() == null ? 0 : a.existingMeters()).append(" meter(s)");
+            if (a.existingLoadKw() != null) {
+                s.append(", ").append(Fmt.kw(a.existingLoadKw()));
+            }
+            if (a.existingCustomerNo() != null) {
+                s.append(", customer ").append(a.existingCustomerNo());
+            }
+        }
+        return s.toString();
+    }
+
+    private static String contact(MeterApplication.Address a) {
+        StringBuilder s = new StringBuilder();
+        if (a.mobile() != null) {
+            s.append("\nMobile ").append(a.mobile());
+        }
+        if (a.telephone() != null) {
+            s.append("  ·  Tel ").append(a.telephone());
+        }
+        if (a.email() != null) {
+            s.append("\n").append(a.email());
+        }
+        return s.toString();
     }
 
     private void saveStatus() {

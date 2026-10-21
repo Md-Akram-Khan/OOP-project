@@ -79,12 +79,14 @@ public final class IdCardReader {
         if (TesseractOcr.available()) {
             NidOcr.Reading reading = NidOcr.read(image);
             ocr = NidOcr.check(reading.lines(), records);
-            if (!complete(ocr)) {
+            // More passes only for what looks like an NID card: a photo of something else would just take longer.
+            if (!complete(ocr) && NidOcr.looksLikeNidCard(reading.lines())) {
                 List<String> more = new ArrayList<>(reading.lines());
                 more.addAll(NidOcr.secondRound(reading.upright()));
                 ocr = NidOcr.check(more, records);
             }
-            if (complete(ocr)) {
+            // The built-in reader only helps find the name or date of birth of a record Tesseract has found.
+            if (complete(ocr) || ocr.record() == null) {
                 return result(ocr, image);
             }
         }

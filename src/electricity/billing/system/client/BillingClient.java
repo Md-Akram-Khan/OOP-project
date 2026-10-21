@@ -30,13 +30,13 @@ public class BillingClient {
      */
     public Bill createBill(String month, int year, Integer previousReading, byte[] photo, String expectedMeterNo,
             boolean acknowledgeWarnings) {
-        return api.post("/api/bills", new Api.NewBillRequest(month, year, previousReading,
+        return api.postPhoto("/api/bills", new Api.NewBillRequest(month, year, previousReading,
                 Base64.getEncoder().encodeToString(photo), expectedMeterNo, acknowledgeWarnings), Bill.class);
     }
 
     /** Admin: which meter the photo shows, its reading, and what the bill would cost, without saving it. */
     public Api.BillPreview preview(String month, int year, Integer previousReading, byte[] photo) {
-        return api.post("/api/bills/preview", new Api.PreviewRequest(month, year, previousReading,
+        return api.postPhoto("/api/bills/preview", new Api.PreviewRequest(month, year, previousReading,
                 Base64.getEncoder().encodeToString(photo)), Api.BillPreview.class);
     }
 

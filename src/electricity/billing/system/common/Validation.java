@@ -35,6 +35,11 @@ public final class Validation {
         return value;
     }
 
+    /** True when the text looks like an email address. */
+    public static boolean isEmail(String value) {
+        return value != null && EMAIL.matcher(value).matches();
+    }
+
     /** Throws an AppException listing every problem with the customer's details. */
     public static void customer(Customer customer) {
         List<String> problems = new ArrayList<>();
